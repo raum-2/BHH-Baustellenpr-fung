@@ -164,7 +164,7 @@ function LoginScreen({ onLogin }) {
       <div style={{ width: '100%', maxWidth: 420 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: `linear-gradient(135deg, ${G.accent}, #f97316)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 16px', boxShadow: `0 8px 32px rgba(245,158,11,0.3)` }}>🏗</div>
+          <img src="/logo.png" alt="BHH Logo" style={{ width: 140, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
           <h1 style={{ fontSize: 26, fontWeight: 800, color: G.text, marginBottom: 4 }}>Bauherren Hilfe</h1>
           <p style={{ color: G.muted, fontSize: 13 }}>Professionelle Baustellenprüfung</p>
         </div>
