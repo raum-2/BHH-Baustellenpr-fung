@@ -77,37 +77,27 @@ function NoteCircle({ n, size=32 }) {
 
 // ─── API Calls ───────────────────────────────────────────────
 async function callClaudeAI(prompt) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/claude-text', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify({ prompt }),
   })
   const data = await res.json()
-  return data.content?.[0]?.text || ''
+  if (!res.ok) throw new Error(data.error || 'Claude API Fehler')
+  return data.text || ''
 }
 
 async function analyzeImage(base64, mediaType = 'image/jpeg') {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const imageBase64 = base64.includes(',') ? base64.split(',')[1] : base64
+  const res = await fetch('/api/claude-analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64.split(',')[1] } },
-          { type: 'text', text: 'Du bist Bausachverständiger. Analysiere dieses Baufoto kurz auf mögliche Mängel, Auffälligkeiten oder Qualitätsaspekte. Antworte auf Deutsch in 2-3 Sätzen, sachlich und fachlich. Beginne direkt mit der Analyse, keine Einleitung.' },
-        ],
-      }],
-    }),
+    body: JSON.stringify({ imageBase64, mediaType }),
   })
   const data = await res.json()
-  return data.content?.[0]?.text || ''
+  if (!res.ok) throw new Error(data.error || 'Claude Bildanalyse Fehler')
+  // claude-analyze gibt oeffentlich+intern zurueck, wir nehmen intern fuer die einfache Analyse
+  return data.intern || data.oeffentlich || ''
 }
 
 async function generateDualText(rohtext) {
