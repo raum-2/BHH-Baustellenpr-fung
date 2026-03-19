@@ -730,19 +730,33 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
     toast.success('Gelöscht')
   }
 
-  async function sendProtocol(type) {
-    setSending(type)
+  async function sendProtocol(recipient) {
+    // recipient: 'ag_beide' = beide Protokolle an AG
+    //            'ag_oeffentlich' = nur öffentliches an AG
+    //            'bauherr' = nur öffentliches an Bauherr
+    const agEmail = begehung.auftraggeber_email
+    const bauherrEmail = begehung.kunde_email
+    if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich') {
+      if (!agEmail) { toast.error('Keine E-Mail für Auftraggeber hinterlegt'); return }
+    }
+    if (recipient === 'bauherr') {
+      if (!bauherrEmail) { toast.error('Keine E-Mail für Bauherr hinterlegt'); return }
+    }
+    setSending(recipient)
     try {
-      await fetch('/api/send-protocol', {
+      const res = await fetch('/api/send-protocol', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ begehung, punkte, type }),
+        body: JSON.stringify({ begehung, punkte, recipient }),
       })
-      toast.success(type === 'oeffentlich' ? 'Öffentliches Protokoll versendet!' : 'Internes Protokoll versendet!')
+      if (!res.ok) throw new Error('Fehler')
+      if (recipient === 'ag_beide') toast.success('Beide Protokolle an AG versendet!')
+      else if (recipient === 'ag_oeffentlich') toast.success('Öffentliches Protokoll an AG versendet!')
+      else toast.success('Öffentliches Protokoll an Bauherr versendet!')
     } catch (e) {
       toast.error('Versand fehlgeschlagen')
     }
-    setSending(false)
+    setSending(null)
   }
 
   async function finalize() {
@@ -837,14 +851,25 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
             {/* Aktionen */}
             {punkte.length > 0 && (
               <div style={{ marginTop:20, display:'flex', flexDirection:'column', gap:10 }}>
-                <button style={btn('ghost', { width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8 })} onClick={() => sendProtocol('oeffentlich')} disabled={!!sending}>
-                  {sending === 'oeffentlich' ? <span className="spinner" /> : '📧'} Öffentliches Protokoll senden
+                <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', margin:'4px 0 2px' }}>Protokoll versenden</p>
+                <button onClick={() => sendProtocol('ag_beide')} disabled={!!sending}
+                  style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
+                  {sending === 'ag_beide' ? <span className="spinner"/> : '📧'} Beide Protokolle an AG
                 </button>
-                <button style={{ ...btn('ghost', { width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }), borderColor: G.red + '44', color: G.red }} onClick={() => sendProtocol('intern')} disabled={!!sending}>
-                  {sending === 'intern' ? <span className="spinner" /> : '🔒'} Internes Protokoll senden
-                </button>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <button onClick={() => sendProtocol('ag_oeffentlich')} disabled={!!sending}
+                    style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'11px 12px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                    {sending === 'ag_oeffentlich' ? <span className="spinner"/> : '📄'} Öffentl. an AG
+                  </button>
+                  <button onClick={() => sendProtocol('bauherr')} disabled={!!sending}
+                    style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'11px 12px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                    {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} Öffentl. an Bauherr
+                  </button>
+                </div>
                 {begehung.status !== 'abgeschlossen' && (
-                  <button style={btn('primary', { width:'100%' })} onClick={finalize}>✓ Begehung abschließen</button>
+                  <button style={{ background:G.green, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', fontSize:13, fontWeight:700, cursor:'pointer', width:'100%', marginTop:4 }} onClick={finalize}>
+                    ✓ Begehung abschließen
+                  </button>
                 )}
               </div>
             )}
@@ -854,34 +879,92 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         {/* Öffentliches Protokoll */}
         {viewMode === 'oeffentlich' && (
           <div>
-            <div style={{ ...card({ marginBottom:16, background:'rgba(16,185,129,0.05)', borderColor: G.green + '33' }) }}>
-              <p style={{ fontSize:12, color:G.green, fontWeight:700, marginBottom:4 }}>📄 Öffentliches Protokoll</p>
-              <p style={{ fontSize:11, color:G.muted }}>Für den Auftraggeber · Positiv formuliert · Lösungsorientiert</p>
+            {/* Protokoll Header */}
+            <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:16 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, paddingBottom:12, borderBottom:`0.5px solid ${G.border}` }}>
+                <div>
+                  <p style={{ fontSize:16, fontWeight:800, color:G.accent, margin:'0 0 4px' }}>Baustellenprüfprotokoll</p>
+                  <p style={{ fontSize:12, color:G.muted, margin:0 }}>Öffentlich · Für Auftraggeber & Bauherr</p>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <p style={{ fontSize:11, color:G.muted, margin:'0 0 2px' }}>{formatDate(begehung.datum)}</p>
+                  {begehung.gesamtnote && <NoteCircle n={begehung.gesamtnote} size={32} />}
+                </div>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {[
+                  ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],
+                  ['Bauherr', begehung.kunde_name || '–'],
+                  ['Sachverständiger', begehung.sachverstaendiger],
+                  ['Adresse', begehung.adresse],
+                ].map(([k,v]) => (
+                  <div key={k} style={{ background:'#f9fafb', borderRadius:8, padding:'8px 10px' }}>
+                    <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 2px' }}>{k}</p>
+                    <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            {/* Prüfpunkte */}
             {punkte.map((p, i) => (
-              <div key={p.id} style={{ ...card({ marginBottom:12 }) }}>
+              <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
                 <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
-                  <NoteCircle n={p.note} size={32} />
-                  <div>
-                    <p style={{ fontWeight:700, fontSize:14 }}>{i+1}. {p.titel}</p>
-                    <p style={{ fontSize:11, color:G.muted }}>{p.status}</p>
+                  <NoteCircle n={p.note} size={34} />
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px' }}>{i+1}. {p.titel}</p>
+                    <span style={{ fontSize:11, padding:'2px 8px', borderRadius:6, background:NOTEN.find(n=>n.n===p.note)?.bg, color:NOTEN.find(n=>n.n===p.note)?.color, fontWeight:600 }}>{p.status}</span>
                   </div>
                 </div>
-                {p.fotos?.slice(0,2).map((f, j) => (
-                  <img key={j} src={f.url} alt="" style={{ width:'100%', borderRadius:10, marginBottom:8, maxHeight:200, objectFit:'cover' }} />
+                {p.fotos?.filter(f=>f.url).slice(0,2).map((f, j) => (
+                  <img key={j} src={f.url} alt="" style={{ width:'100%', borderRadius:8, marginBottom:8, maxHeight:220, objectFit:'cover' }} />
                 ))}
-                <p style={{ fontSize:13, color:G.text, lineHeight:1.7 }}>{p.text_oeffentlich || p.rohtext || '–'}</p>
+                <p style={{ fontSize:13, color:G.text, lineHeight:1.7, margin:0 }}>{p.text_oeffentlich || p.rohtext || '–'}</p>
               </div>
             ))}
+
+            {/* Versand Buttons */}
+            <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:8 }}>
+              <button onClick={() => sendProtocol('ag_oeffentlich')} disabled={!!sending}
+                style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
+                {sending === 'ag_oeffentlich' ? <span className="spinner"/> : '📧'} An Auftraggeber senden
+              </button>
+              <button onClick={() => sendProtocol('bauherr')} disabled={!!sending}
+                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
+                {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} An Bauherr senden
+              </button>
+            </div>
           </div>
         )}
 
         {/* Internes Protokoll */}
         {viewMode === 'intern' && (
           <div>
-            <div style={{ ...card({ marginBottom:16, background:'rgba(239,68,68,0.05)', borderColor: G.red + '33' }) }}>
-              <p style={{ fontSize:12, color:G.red, fontWeight:700, marginBottom:4 }}>🔒 Internes Protokoll</p>
-              <p style={{ fontSize:11, color:G.muted }}>Nur intern · Technisch präzise · Vollständig</p>
+            {/* Protokoll Header */}
+            <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:16 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, paddingBottom:12, borderBottom:`0.5px solid ${G.border}` }}>
+                <div>
+                  <p style={{ fontSize:16, fontWeight:800, color:G.red, margin:'0 0 4px' }}>Internes Protokoll</p>
+                  <p style={{ fontSize:12, color:G.muted, margin:0 }}>Vertraulich · Nur für interne Zwecke</p>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <p style={{ fontSize:11, color:G.muted, margin:'0 0 2px' }}>{formatDate(begehung.datum)}</p>
+                  {begehung.gesamtnote && <NoteCircle n={begehung.gesamtnote} size={32} />}
+                </div>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {[
+                  ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],
+                  ['Bauherr', begehung.kunde_name || '–'],
+                  ['Sachverständiger', begehung.sachverstaendiger],
+                  ['Adresse', begehung.adresse],
+                ].map(([k,v]) => (
+                  <div key={k} style={{ background:'#f9fafb', borderRadius:8, padding:'8px 10px' }}>
+                    <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 2px' }}>{k}</p>
+                    <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
+                  </div>
+                ))}
+              </div>
             </div>
             {punkte.map((p, i) => (
               <div key={p.id} style={{ ...card({ marginBottom:12, borderColor: p.note >= 4 ? G.red + '44' : G.border }) }}>

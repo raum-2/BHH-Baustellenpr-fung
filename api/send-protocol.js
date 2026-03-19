@@ -1,94 +1,147 @@
-import sgMail from '@sendgrid/mail'
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).end()
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { begehung, punkte, type } = req.body
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+  const { begehung, punkte, recipient } = req.body
+  // recipient: 'ag_beide' | 'ag_oeffentlich' | 'bauherr'
 
-  const isPublic = type === 'oeffentlich'
-  const subject  = isPublic
-    ? `Begehungsprotokoll – ${begehung.titel} – ${begehung.datum}`
-    : `[INTERN] Protokoll – ${begehung.titel} – ${begehung.datum}`
+  const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
+  const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@bauherrenhilfe.at'
 
-  const to = isPublic
-    ? begehung.auftraggeber_email
-    : process.env.INTERNAL_EMAIL || 'intern@bauherren-hilfe.at'
+  function formatDate(d) {
+    if (!d) return '–'
+    return new Date(d).toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
 
-  const punkte_html = punkte.map((p, i) => {
-    const noteColor = p.note <= 2 ? '#10b981' : p.note <= 3 ? '#f59e0b' : '#ef4444'
-    const text = isPublic ? (p.text_oeffentlich || p.rohtext || '–') : (p.text_intern || p.rohtext || '–')
-    const fotos = (p.fotos || []).filter(f => f.url).map(f =>
-      `<img src="${f.url}" style="width:100%;max-width:400px;border-radius:8px;margin:6px 0;" />`
-    ).join('')
-    return `
-      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:14px;background:#fff;">
+  function noteLabel(n) {
+    const labels = { 1: 'Besser als gefordert', 2: 'Alle Forderungen erfüllt', 3: 'Durchschnittlich', 4: 'Verbesserungsbedarf', 5: 'Fehlerhaft' }
+    return labels[n] || '–'
+  }
+
+  function noteColor(n) {
+    const colors = { 1: '#16a34a', 2: '#2563eb', 3: '#d97706', 4: '#f97316', 5: '#dc2626' }
+    return colors[n] || '#6b7280'
+  }
+
+  function buildOeffentlichHTML(begehung, punkte) {
+    const items = punkte.map((p, i) => `
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="width:36px;height:36px;border-radius:50%;background:${noteColor}20;border:2px solid ${noteColor};display:flex;align-items:center;justify-content:center;font-weight:800;color:${noteColor};font-size:16px;flex-shrink:0;">${p.note || '–'}</div>
+          <div style="width:36px;height:36px;border-radius:50%;background:${noteColor(p.note)}22;border:2px solid ${noteColor(p.note)};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${noteColor(p.note)};flex-shrink:0;">${p.note}</div>
           <div>
-            <p style="margin:0;font-weight:700;font-size:15px;">${i+1}. ${p.titel}</p>
-            <p style="margin:0;font-size:12px;color:#6b7280;">${p.status || ''}</p>
+            <p style="font-weight:700;font-size:14px;margin:0 0 3px;">${i + 1}. ${p.titel}</p>
+            <span style="font-size:11px;background:${noteColor(p.note)}22;color:${noteColor(p.note)};padding:2px 8px;border-radius:6px;font-weight:600;">${p.status || noteLabel(p.note)}</span>
           </div>
         </div>
-        ${fotos}
-        <p style="font-size:14px;color:#374151;line-height:1.7;margin-top:8px;">${text}</p>
-      </div>`
-  }).join('')
+        ${p.fotos?.filter(f => f.url).slice(0, 2).map(f => `<img src="${f.url}" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:8px;" />`).join('') || ''}
+        <p style="font-size:13px;color:#374151;line-height:1.7;margin:0;">${p.text_oeffentlich || p.rohtext || '–'}</p>
+      </div>
+    `).join('')
 
-  const avgNote = punkte.length > 0 ? Math.round(punkte.reduce((s,p) => s + (p.note||3), 0) / punkte.length) : null
-  const noteLabel = avgNote ? ['','Besser als gefordert','Alle Anforderungen erfüllt','Durchschnittlich','Verbesserungsbedarf','Fehlerhaft'][avgNote] : '–'
-  const noteColor = avgNote <= 2 ? '#10b981' : avgNote <= 3 ? '#f59e0b' : '#ef4444'
-
-  const html = `
-<!DOCTYPE html>
-<html lang="de">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f9fafb;font-family:'Segoe UI',sans-serif;">
-  <div style="max-width:640px;margin:0 auto;padding:20px;">
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:14px;padding:24px;margin-bottom:20px;color:white;">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-        <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#f59e0b,#f97316);display:flex;align-items:center;justify-content:center;font-size:24px;">🏗</div>
-        <div>
-          <p style="margin:0;font-size:12px;opacity:.6;text-transform:uppercase;letter-spacing:.5px;">${isPublic ? 'Öffentliches Protokoll' : '🔒 Internes Protokoll'}</p>
-          <h1 style="margin:0;font-size:20px;font-weight:800;">${begehung.titel}</h1>
+    return `
+    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+      <div style="background:#cc1f1f;padding:24px;border-radius:12px 12px 0 0;">
+        <p style="color:#fff;font-size:20px;font-weight:800;margin:0 0 4px;">Baustellenprüfprotokoll</p>
+        <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0;">Öffentliches Protokoll · ${formatDate(begehung.datum)}</p>
+      </div>
+      <div style="background:#f9fafb;padding:16px;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;">
+        <table style="width:100%;font-size:12px;">
+          <tr><td style="color:#6b7280;padding:3px 0;width:140px;">Bauvorhaben</td><td style="font-weight:600;color:#111;">${begehung.titel}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Adresse</td><td style="font-weight:600;color:#111;">${begehung.adresse || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Auftraggeber</td><td style="font-weight:600;color:#111;">${begehung.auftraggeber_firma || begehung.auftraggeber_name || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Bauherr</td><td style="font-weight:600;color:#111;">${begehung.kunde_name || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Sachverständiger</td><td style="font-weight:600;color:#111;">${begehung.sachverstaendiger || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Ausbaustufe</td><td style="font-weight:600;color:#111;">${begehung.gewerk || '–'}</td></tr>
+        </table>
+      </div>
+      <div style="padding:16px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        ${items}
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center;">
+          Dieses Protokoll wurde automatisch erstellt · Bauherrenhilfe · bauherrenhilfe.at
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
-        <div><p style="margin:0;opacity:.6;font-size:11px;text-transform:uppercase;">Auftraggeber</p><p style="margin:0;font-weight:600;">${begehung.auftraggeber_name}</p></div>
-        <div><p style="margin:0;opacity:.6;font-size:11px;text-transform:uppercase;">Datum</p><p style="margin:0;font-weight:600;">${new Date(begehung.datum).toLocaleDateString('de-AT')}</p></div>
-        <div><p style="margin:0;opacity:.6;font-size:11px;text-transform:uppercase;">Sachverständiger</p><p style="margin:0;font-weight:600;">${begehung.sachverstaendiger}</p></div>
-        <div><p style="margin:0;opacity:.6;font-size:11px;text-transform:uppercase;">Gewerk</p><p style="margin:0;font-weight:600;">${begehung.gewerk}</p></div>
+    </div>`
+  }
+
+  function buildInternHTML(begehung, punkte) {
+    const items = punkte.map((p, i) => `
+      <div style="border:1px solid ${p.note >= 4 ? '#fca5a5' : '#e5e7eb'};border-radius:10px;padding:14px;margin-bottom:12px;${p.note >= 4 ? 'background:#fff5f5;' : ''}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:${noteColor(p.note)}22;border:2px solid ${noteColor(p.note)};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${noteColor(p.note)};flex-shrink:0;">${p.note}</div>
+          <div>
+            <p style="font-weight:700;font-size:14px;margin:0 0 3px;">${i + 1}. ${p.titel}</p>
+            <span style="font-size:11px;background:${noteColor(p.note)}22;color:${noteColor(p.note)};padding:2px 8px;border-radius:6px;font-weight:600;">${p.status || noteLabel(p.note)}</span>
+          </div>
+        </div>
+        ${p.fotos?.filter(f => f.url).map(f => `<img src="${f.url}" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:8px;" />`).join('') || ''}
+        ${p.rohtext ? `<p style="font-size:11px;color:#6b7280;font-style:italic;margin:0 0 6px;">Rohnotiz: ${p.rohtext}</p>` : ''}
+        <p style="font-size:13px;color:#374151;line-height:1.7;margin:0;">${p.text_intern || p.rohtext || '–'}</p>
+        ${p.fotos?.[0]?.analyse ? `<p style="font-size:11px;color:#6b7280;margin:8px 0 0;padding-top:8px;border-top:1px solid #e5e7eb;">KI-Analyse: ${p.fotos[0].analyse}</p>` : ''}
       </div>
-    </div>
+    `).join('')
 
-    <!-- Gesamtnote -->
-    ${avgNote ? `
-    <div style="background:${noteColor}15;border:1px solid ${noteColor}40;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:14px;">
-      <div style="width:44px;height:44px;border-radius:50%;background:${noteColor}25;border:2px solid ${noteColor};display:flex;align-items:center;justify-content:center;font-weight:800;color:${noteColor};font-size:20px;flex-shrink:0;">${avgNote}</div>
-      <div><p style="margin:0;font-weight:700;color:${noteColor};">Gesamtnote: ${avgNote}</p><p style="margin:0;font-size:12px;color:#6b7280;">${noteLabel} · ${punkte.length} Prüfpunkte</p></div>
-    </div>` : ''}
+    return `
+    <div style="font-family:Inter,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+      <div style="background:#991515;padding:24px;border-radius:12px 12px 0 0;">
+        <p style="color:#fff;font-size:20px;font-weight:800;margin:0 0 4px;">Internes Protokoll</p>
+        <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0;">Vertraulich · Nur für interne Zwecke · ${formatDate(begehung.datum)}</p>
+      </div>
+      <div style="background:#fff5f5;padding:16px;border-left:1px solid #fca5a5;border-right:1px solid #fca5a5;">
+        <table style="width:100%;font-size:12px;">
+          <tr><td style="color:#6b7280;padding:3px 0;width:140px;">Bauvorhaben</td><td style="font-weight:600;color:#111;">${begehung.titel}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Adresse</td><td style="font-weight:600;color:#111;">${begehung.adresse || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Auftraggeber</td><td style="font-weight:600;color:#111;">${begehung.auftraggeber_firma || begehung.auftraggeber_name || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Bauherr</td><td style="font-weight:600;color:#111;">${begehung.kunde_name || '–'}</td></tr>
+          <tr><td style="color:#6b7280;padding:3px 0;">Sachverständiger</td><td style="font-weight:600;color:#111;">${begehung.sachverstaendiger || '–'}</td></tr>
+        </table>
+      </div>
+      <div style="padding:16px;border:1px solid #fca5a5;border-top:none;border-radius:0 0 12px 12px;">
+        ${items}
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#9ca3af;text-align:center;">
+          VERTRAULICH · Internes Dokument · Bauherrenhilfe
+        </div>
+      </div>
+    </div>`
+  }
 
-    <!-- Prüfpunkte -->
-    <h2 style="font-size:16px;font-weight:700;margin-bottom:14px;color:#1e293b;">Prüfpunkte (${punkte.length})</h2>
-    ${punkte_html}
-
-    <!-- Footer -->
-    <div style="text-align:center;padding:20px;font-size:11px;color:#9ca3af;">
-      <p style="margin:0 0 4px;font-weight:700;">Bauherren Hilfe</p>
-      <p style="margin:0;">Dieses ${isPublic ? 'Protokoll wurde automatisch generiert' : 'ist ein vertrauliches internes Dokument'}.</p>
-      <p style="margin:4px 0 0;">Versanddatum: ${new Date().toLocaleString('de-AT')}</p>
-    </div>
-  </div>
-</body>
-</html>`
+  async function sendMail(to, subject, html) {
+    const r = await fetch('https://api.sendgrid.com/v3/mail/send', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${SENDGRID_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        personalizations: [{ to: [{ email: to }] }],
+        from: { email: FROM_EMAIL, name: 'Bauherrenhilfe' },
+        subject,
+        content: [{ type: 'text/html', value: html }],
+      }),
+    })
+    if (!r.ok) {
+      const err = await r.text()
+      throw new Error(`SendGrid: ${err}`)
+    }
+  }
 
   try {
-    await sgMail.send({ to, from: process.env.FROM_EMAIL || 'noreply@bauherren-hilfe.at', subject, html })
-    // Log in DB
-    res.status(200).json({ ok: true })
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ error: e.message })
+    const agEmail = begehung.auftraggeber_email
+    const bauherrEmail = begehung.kunde_email
+    const titel = begehung.titel || 'Baustellenprüfung'
+
+    if (recipient === 'ag_beide') {
+      if (!agEmail) return res.status(400).json({ error: 'Keine AG E-Mail' })
+      await sendMail(agEmail, `Öffentliches Protokoll – ${titel}`, buildOeffentlichHTML(begehung, punkte))
+      await sendMail(agEmail, `Internes Protokoll – ${titel}`, buildInternHTML(begehung, punkte))
+    } else if (recipient === 'ag_oeffentlich') {
+      if (!agEmail) return res.status(400).json({ error: 'Keine AG E-Mail' })
+      await sendMail(agEmail, `Protokoll – ${titel}`, buildOeffentlichHTML(begehung, punkte))
+    } else if (recipient === 'bauherr') {
+      if (!bauherrEmail) return res.status(400).json({ error: 'Keine Bauherr E-Mail' })
+      await sendMail(bauherrEmail, `Ihr Baustellenprotokoll – ${titel}`, buildOeffentlichHTML(begehung, punkte))
+    } else {
+      return res.status(400).json({ error: 'Ungültiger recipient' })
+    }
+
+    return res.status(200).json({ ok: true })
+  } catch (err) {
+    console.error('send-protocol error:', err)
+    return res.status(500).json({ error: err.message })
   }
 }
