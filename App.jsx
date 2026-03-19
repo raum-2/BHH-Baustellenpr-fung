@@ -98,9 +98,21 @@ async function imgToBase64(url) {
   } catch { return null }
 }
 
+async function loadJsPDF() {
+  if (window.jspdf?.jsPDF) return window.jspdf.jsPDF
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+    s.onload = resolve
+    s.onerror = reject
+    document.head.appendChild(s)
+  })
+  return window.jspdf.jsPDF
+}
+
 async function generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl, creatorName }) {
-  const { jsPDF } = await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const JsPDF = await loadJsPDF()
+  const doc = new JsPDF({ unit: 'mm', format: 'a4' })
   const pW = 210, pH = 297, ml = 18, mr = 18, cW = pW - ml - mr
   let y = 0
   const isOeff = type === 'oeffentlich'
