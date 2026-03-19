@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import jsPDF from 'jspdf'
 import { useState, useEffect, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster, toast } from 'react-hot-toast'
@@ -82,6 +83,357 @@ const lbl = { fontSize: 11, fontWeight: 700, color: G.muted, textTransform: 'upp
 function formatDate(d) {
   if (!d) return '–'
   return new Date(d).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' })
+}
+
+// ─── PDF Generierung ─────────────────────────────────────────
+async function imgToBase64(url) {
+  try {
+    const r = await fetch(url)
+    const blob = await r.blob()
+    return new Promise(res => {
+      const reader = new FileReader()
+      reader.onloadend = () => res(reader.result)
+      reader.readAsDataURL(blob)
+    })
+  } catch { return null }
+}
+
+async function generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl, creatorName }) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const pW = 210, pH = 297, ml = 18, mr = 18, cW = pW - ml - mr
+  let y = 0
+  const isOeff = type === 'oeffentlich'
+  const red = [204, 31, 31]
+  const darkRed = [153, 21, 21]
+  const white = [255, 255, 255]
+  const dark = [17, 17, 17]
+  const muted = [107, 114, 128]
+  const lightGray = [249, 250, 251]
+  const borderGray = [229, 231, 235]
+
+  function addPage() {
+    doc.addPage()
+    y = 15
+    doc.setFillColor(...[249,250,251])
+    doc.rect(0, 0, pW, pH, 'F')
+  }
+
+  function checkY(needed) {
+    if (y + needed > pH - 20) { addPage() }
+  }
+
+  function noteColor(n) {
+    if (n === 1) return [22, 163, 74]
+    if (n === 2) return [37, 99, 235]
+    if (n === 3) return [217, 119, 6]
+    if (n === 4) return [249, 115, 22]
+    return [220, 38, 38]
+  }
+
+  function noteBg(n) {
+    if (n === 1) return [220, 252, 231]
+    if (n === 2) return [219, 234, 254]
+    if (n === 3) return [254, 243, 199]
+    if (n === 4) return [255, 247, 237]
+    return [254, 242, 242]
+  }
+
+  function noteLabel(n) {
+    return ['','Besser als gefordert','Alle Forderungen erfüllt','Durchschnittlich','Verbesserungsbedarf','Fehlerhaft'][n] || ''
+  }
+
+  function fmtDate(d) {
+    if (!d) return '–'
+    return new Date(d).toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' })
+  }
+
+  // ── Header ──
+  doc.setFillColor(...red)
+  doc.rect(0, 0, pW, 46, 'F')
+
+  // Logo text
+  doc.setTextColor(...white)
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.text('BAUHERRENHILFE · ' + (isOeff ? 'BAUSTELLENPRÜFPROTOKOLL' : 'INTERNES PROTOKOLL'), ml, 10)
+
+  // Title
+  doc.setFontSize(16)
+  doc.setFont('helvetica', 'bold')
+  const titleLines = doc.splitTextToSize(begehung.titel || '–', cW - 25)
+  doc.text(titleLines, ml, 20)
+
+  // Date + address
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(255, 200, 200)
+  doc.text((begehung.adresse || '') + (begehung.datum ? '  ·  ' + fmtDate(begehung.datum) : ''), ml, 33)
+
+  // Gesamtnote circle
+  if (begehung.gesamtnote) {
+    const nc = noteColor(begehung.gesamtnote)
+    doc.setFillColor(255,255,255)
+    doc.circle(pW - mr - 10, 23, 10, 'F')
+    doc.setTextColor(...nc)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(String(begehung.gesamtnote), pW - mr - 10, 25, { align: 'center' })
+    doc.setFontSize(7)
+    doc.setTextColor(...nc)
+    doc.text('NOTE', pW - mr - 10, 30, { align: 'center' })
+  }
+
+  y = 52
+
+  // ── Beteiligte ──
+  doc.setFillColor(...lightGray)
+  doc.rect(0, 46, pW, 22, 'F')
+  doc.setDrawColor(...borderGray)
+  doc.setLineWidth(0.3)
+  doc.line(0, 68, pW, 68)
+
+  const cols = [
+    ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name || '–'],
+    ['Bauherr', begehung.kunde_name || '–'],
+    ['Sachverständiger', begehung.sachverstaendiger || '–'],
+  ]
+  cols.forEach((c, i) => {
+    const x = ml + i * (cW / 3)
+    doc.setFontSize(7)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...muted)
+    doc.text(c[0].toUpperCase(), x, 53)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...dark)
+    doc.text(doc.splitTextToSize(c[1], cW/3 - 4)[0], x, 59)
+  })
+
+  y = 76
+
+  // ── Sektion 1: Auftrag & Grundlagen ──
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...red)
+  doc.text('1. AUFTRAG & GRUNDLAGEN', ml, y)
+  y += 6
+
+  doc.setDrawColor(...red)
+  doc.setLineWidth(0.4)
+  doc.line(ml, y, ml + cW, y)
+  y += 5
+
+  const grundlagenText = 'Die Baustellenprüfung wurde im Auftrag des Auftraggebers ' +
+    (begehung.auftraggeber_firma || begehung.auftraggeber_name || '–') +
+    ' durchgeführt. Gegenstand der Prüfung ist die Prüfung der Verarbeitung des Qualitätsbetriebes. Die Begehung erfolgte am ' +
+    fmtDate(begehung.datum) + ' durch den Sachverständigen ' +
+    (begehung.sachverstaendiger || '–') + '.'
+
+  doc.setFontSize(9.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...dark)
+  const grundLines = doc.splitTextToSize(grundlagenText, cW)
+  doc.text(grundLines, ml, y)
+  y += grundLines.length * 5 + 8
+
+  // ── Sektion 2: Befund ──
+  checkY(20)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...red)
+  doc.text('2. BEFUND DER PRÜFPUNKTE', ml, y)
+  y += 6
+  doc.setDrawColor(...red)
+  doc.setLineWidth(0.4)
+  doc.line(ml, y, ml + cW, y)
+  y += 7
+
+  for (let i = 0; i < punkte.length; i++) {
+    const p = punkte[i]
+    const text = getEditedText(p, isOeff ? 'oeffentlich' : 'intern')
+    const nc = noteColor(p.note)
+    const nb = noteBg(p.note)
+
+    checkY(35)
+
+    // Note circle
+    doc.setFillColor(...nb)
+    doc.circle(ml + 5, y + 4, 5, 'F')
+    doc.setDrawColor(...nc)
+    doc.setLineWidth(0.5)
+    doc.circle(ml + 5, y + 4, 5, 'S')
+    doc.setTextColor(...nc)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'bold')
+    doc.text(String(p.note), ml + 5, y + 5.5, { align: 'center' })
+
+    // Title
+    doc.setTextColor(...dark)
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.text((i+1) + '. ' + (p.titel || ''), ml + 13, y + 4)
+
+    // Status badge
+    doc.setFillColor(...nb)
+    doc.roundedRect(ml + 13, y + 7, 45, 5, 1, 1, 'F')
+    doc.setFontSize(7)
+    doc.setTextColor(...nc)
+    doc.text(p.status || noteLabel(p.note), ml + 15, y + 10.5)
+
+    y += 18
+
+    // Photos
+    const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
+    for (const foto of fotos) {
+      if (!foto.url) continue
+      checkY(55)
+      const b64 = await imgToBase64(foto.url)
+      if (b64) {
+        try {
+          const imgW = Math.min(cW, 120)
+          doc.addImage(b64, 'JPEG', ml, y, imgW, 50)
+          y += 54
+        } catch(e) { /* skip broken image */ }
+      }
+    }
+
+    // Text
+    if (text) {
+      checkY(20)
+      const textLines = doc.splitTextToSize(text, cW)
+      doc.setFontSize(9.5)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(...dark)
+      doc.text(textLines, ml, y)
+      y += textLines.length * 5
+    }
+
+    // Rohnotiz (intern only)
+    if (!isOeff && p.rohtext) {
+      checkY(10)
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'italic')
+      doc.setTextColor(...muted)
+      const rLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
+      doc.text(rLines, ml, y)
+      y += rLines.length * 4.5
+    }
+
+    // Divider
+    y += 4
+    doc.setDrawColor(...borderGray)
+    doc.setLineWidth(0.2)
+    doc.line(ml, y, ml + cW, y)
+    y += 6
+  }
+
+  // ── Sektion 3: Zusammenfassung ──
+  checkY(30)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...red)
+  doc.text('3. ZUSAMMENFASSUNG & EMPFEHLUNG', ml, y)
+  y += 6
+  doc.setDrawColor(...red)
+  doc.setLineWidth(0.4)
+  doc.line(ml, y, ml + cW, y)
+  y += 6
+
+  const maengel = punkte.filter(p => p.note >= 4).length
+  const gut = punkte.filter(p => p.note <= 2).length
+  let summaryText = 'Die Begehung ergab insgesamt eine Gesamtnote von ' + (begehung.gesamtnote || '–') + ' bei ' + punkte.length + ' geprüften Punkten.'
+  if (maengel > 0) summaryText += ' Es wurden ' + maengel + ' Prüfpunkt' + (maengel > 1 ? 'e' : '') + ' mit Verbesserungsbedarf oder Mängeln festgestellt. Eine Nachkontrolle der bemängelten Punkte wird empfohlen.'
+  else summaryText += ' Alle Prüfpunkte wurden zufriedenstellend bewertet. Es besteht kein unmittelbarer Nachbesserungsbedarf.'
+
+  doc.setFontSize(9.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...dark)
+  const sumLines = doc.splitTextToSize(summaryText, cW)
+  doc.text(sumLines, ml, y)
+  y += sumLines.length * 5 + 10
+
+  // ── Sektion 4: Abschluss & Signatur ──
+  checkY(50)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...red)
+  doc.text('4. ABSCHLUSS & SIGNATUR', ml, y)
+  y += 6
+  doc.setDrawColor(...red)
+  doc.setLineWidth(0.4)
+  doc.line(ml, y, ml + cW, y)
+  y += 8
+
+  // Left: date + name
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...muted)
+  doc.text('Erstellt am', ml, y)
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...dark)
+  doc.text(fmtDate(new Date().toISOString()), ml, y + 5)
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...muted)
+  doc.text('Erstellt von', ml, y + 12)
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...dark)
+  doc.text(creatorName || begehung.sachverstaendiger || '–', ml, y + 17)
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...muted)
+  doc.text('Bauherrenhilfe · bauherrenhilfe.at', ml, y + 23)
+
+  // Right: Stempel
+  const stampX = ml + cW / 2
+  const stampW = cW / 2 - 4
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...muted)
+  doc.text('Stempel & Unterschrift', stampX, y)
+
+  if (stempelUrl) {
+    try {
+      const stempelB64 = await imgToBase64(stempelUrl)
+      if (stempelB64) {
+        doc.addImage(stempelB64, 'PNG', stampX, y + 3, stampW, 25)
+      }
+    } catch(e) {
+      doc.setDrawColor(...borderGray)
+      doc.setLineWidth(0.3)
+      doc.rect(stampX, y + 3, stampW, 25, 'S')
+    }
+  } else {
+    doc.setDrawColor(...borderGray)
+    doc.setLineWidth(0.3)
+    doc.setLineDashPattern([1, 1], 0)
+    doc.rect(stampX, y + 3, stampW, 25, 'S')
+    doc.setLineDashPattern([], 0)
+  }
+
+  y += 32
+
+  // ── Footer auf jeder Seite ──
+  const pageCount = doc.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setFillColor(...lightGray)
+    doc.rect(0, pH - 12, pW, 12, 'F')
+    doc.setDrawColor(...borderGray)
+    doc.setLineWidth(0.2)
+    doc.line(0, pH - 12, pW, pH - 12)
+    doc.setFontSize(7)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...muted)
+    doc.text('Bauherrenhilfe · bauherrenhilfe.at', ml, pH - 5)
+    doc.text('Seite ' + i + ' / ' + pageCount, pW - mr, pH - 5, { align: 'right' })
+  }
+
+  return doc
 }
 
 function NoteCircle({ n, size=32 }) {
@@ -821,15 +1173,28 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
     }
     setSending(recipient)
     try {
+      // PDF(s) generieren
+      toast.loading('PDFs werden erstellt…', { id: 'pdf-send' })
+      let pdfOeff = null, pdfIntern = null
+      if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich' || recipient === 'bauherr') {
+        const docOeff = await generateProtokollPDF({ type: 'oeffentlich', begehung, punkte, getEditedText, stempelUrl: null, creatorName: begehung.sachverstaendiger })
+        pdfOeff = docOeff.output('datauristring').split(',')[1]
+      }
+      if (recipient === 'ag_beide') {
+        const docIntern = await generateProtokollPDF({ type: 'intern', begehung, punkte, getEditedText, stempelUrl: null, creatorName: begehung.sachverstaendiger })
+        pdfIntern = docIntern.output('datauristring').split(',')[1]
+      }
+      toast.loading('E-Mail wird gesendet…', { id: 'pdf-send' })
       const res = await fetch('/api/send-protocol', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ begehung, punkte: getPunkteForSend(), recipient }),
+        body: JSON.stringify({ begehung, punkte: getPunkteForSend(), recipient, pdfOeff, pdfIntern }),
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Versand fehlgeschlagen')
       }
+      toast.dismiss('pdf-send')
       if (recipient === 'ag_beide') toast.success('Beide Protokolle an AG versendet!')
       else if (recipient === 'ag_oeffentlich') toast.success('Öffentliches Protokoll an AG versendet!')
       else toast.success('Öffentliches Protokoll an Bauherr versendet!')
@@ -839,6 +1204,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         setBegehung(b => ({ ...b, status: 'versendet' }))
       }
     } catch (e) {
+      toast.dismiss('pdf-send')
       toast.error(e.message || 'Versand fehlgeschlagen')
     }
     setSending(null)
@@ -990,13 +1356,22 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   }
 
   // ── PDF Export via Print ──
-  function exportPDF(type) {
-    const printContent = buildPrintHTML(type)
-    const w = window.open('', '_blank')
-    w.document.write(printContent)
-    w.document.close()
-    w.focus()
-    setTimeout(() => { w.print() }, 500)
+  async function exportPDF(type) {
+    toast.loading('PDF wird erstellt…', { id: 'pdf' })
+    try {
+      const doc = await generateProtokollPDF({
+        type,
+        begehung,
+        punkte,
+        getEditedText,
+        stempelUrl: null,
+        creatorName: begehung.sachverstaendiger,
+      })
+      doc.save('Protokoll_' + (type === 'oeffentlich' ? 'Oeffentlich' : 'Intern') + '_' + (begehung.titel || 'Begehung').replace(/[^a-zA-Z0-9]/g, '_') + '.pdf')
+      toast.success('PDF erstellt!', { id: 'pdf' })
+    } catch(e) {
+      toast.error('PDF Fehler: ' + e.message, { id: 'pdf' })
+    }
   }
 
   // ── Word Export ──
@@ -1363,6 +1738,100 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
           onClose={() => { setShowModal(false); setEditPunkt(null) }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Profil / Einstellungen ──────────────────────────────────
+function ProfilSettings({ user, profile, onUpdate }) {
+  const [stempelFile, setStempelFile] = useState(null)
+  const [stempelPreview, setStempelPreview] = useState(profile?.stempel_url || null)
+  const [saving, setSaving] = useState(false)
+  const fileRef = useRef()
+
+  async function handleStempelUpload(file) {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = e => setStempelPreview(e.target.result)
+    reader.readAsDataURL(file)
+    setStempelFile(file)
+  }
+
+  async function saveStempel() {
+    if (!stempelFile) return
+    setSaving(true)
+    const ext = stempelFile.type.split('/')[1] || 'png'
+    const path = user.id + '/stempel.' + ext
+    const buffer = await stempelFile.arrayBuffer()
+    const { error } = await sb.storage.from('bhh-photos').upload(path, buffer, { contentType: stempelFile.type, upsert: true })
+    if (error) { toast.error(error.message); setSaving(false); return }
+    const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
+    const url = data?.publicUrl
+    await sb.from('profiles').update({ stempel_url: url }).eq('id', user.id)
+    onUpdate({ stempel_url: url })
+    toast.success('Stempel gespeichert!')
+    setSaving(false)
+  }
+
+  return (
+    <div style={{ paddingBottom:100 }}>
+      <div style={{ background:G.accent, padding:'14px 16px' }}>
+        <p style={{ color:'#fff', fontSize:17, fontWeight:800, margin:0 }}>Profil & Einstellungen</p>
+      </div>
+      <div style={{ padding:20 }}>
+        {/* Profil Info */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:16 }}>
+          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 12px' }}>Meine Daten</p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+            {[
+              ['Name', profile?.full_name || '–'],
+              ['Firma', profile?.firma || '–'],
+              ['UID', profile?.uid_nummer || '–'],
+              ['Telefon', profile?.telefon || '–'],
+              ['Adresse', profile?.firma_adresse || '–'],
+              ['E-Mail', user?.email || '–'],
+            ].map(([k,v]) => (
+              <div key={k} style={{ background:'#f9fafb', borderRadius:8, padding:'8px 10px' }}>
+                <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 2px' }}>{k}</p>
+                <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stempel Upload */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16 }}>
+          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 4px' }}>Stempel & Unterschrift</p>
+          <p style={{ fontSize:12, color:G.muted, margin:'0 0 14px' }}>Wird auf allen Protokollen und PDFs angezeigt. PNG mit transparentem Hintergrund empfohlen.</p>
+
+          <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => handleStempelUpload(e.target.files[0])} />
+
+          {stempelPreview ? (
+            <div style={{ marginBottom:12 }}>
+              <img src={stempelPreview} alt="Stempel" style={{ maxWidth:'100%', maxHeight:120, objectFit:'contain', border:`0.5px solid ${G.border}`, borderRadius:8, padding:8, background:'#f9fafb' }} />
+            </div>
+          ) : (
+            <div onClick={() => fileRef.current?.click()}
+              style={{ border:`1.5px dashed ${G.border}`, borderRadius:10, padding:24, textAlign:'center', cursor:'pointer', marginBottom:12, background:'#f9fafb' }}>
+              <p style={{ fontSize:13, color:G.muted, margin:0 }}>Bild auswählen</p>
+              <p style={{ fontSize:11, color:G.muted, margin:'4px 0 0' }}>PNG, JPG – max. 5MB</p>
+            </div>
+          )}
+
+          <div style={{ display:'flex', gap:8 }}>
+            <button onClick={() => fileRef.current?.click()}
+              style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'10px', fontSize:13, fontWeight:600, color:G.text, cursor:'pointer' }}>
+              {stempelPreview ? 'Anderes Bild' : 'Bild wählen'}
+            </button>
+            {stempelFile && (
+              <button onClick={saveStempel} disabled={saving}
+                style={{ flex:2, background:G.accent, border:'none', borderRadius:9, padding:'10px', fontSize:13, fontWeight:700, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {saving ? <span className="spinner"/> : null} Stempel speichern
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1774,6 +2243,7 @@ function App() {
       case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} isSuperAdmin={isSuperAdmin} userId={user?.id} />
+      case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} />
       case 'admin':          return <AdminPanel />
       default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }
