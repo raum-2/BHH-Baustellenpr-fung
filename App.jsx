@@ -18,6 +18,21 @@ const NOTEN = [
 ]
 const STATUS_OPT = ['In Ordnung','Beobachtung','Verbesserung empfohlen','Mangel']
 
+const BEGEHUNG_STATUS = {
+  erstellt:      { label:'Erstellt',     color:'#2563eb', bg:'#dbeafe' },
+  versendet:     { label:'Versendet',    color:'#d97706', bg:'#fef3c7' },
+  abgeschlossen: { label:'Abgeschlossen',color:'#16a34a', bg:'#dcfce7' },
+}
+
+function StatusBadge({ status }) {
+  const cfg = BEGEHUNG_STATUS[status] || BEGEHUNG_STATUS['erstellt']
+  return (
+    <span style={{ fontSize:11, fontWeight:700, background:cfg.bg, color:cfg.color, borderRadius:6, padding:'3px 9px', flexShrink:0 }}>
+      {cfg.label}
+    </span>
+  )
+}
+
 // ─── CSS-in-JS ───────────────────────────────────────────────
 const G = {
   bg: '#f5f5f5', card: '#ffffff', border: '#e5e7eb',
@@ -373,6 +388,7 @@ function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading, on
                 <p style={{ fontSize:12, color:G.muted, margin:'0 0 6px' }}>{b.gewerk} · {formatDate(b.datum)}</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
                   <span style={{ fontSize:10, background:G.accentLight, borderRadius:6, padding:'2px 8px', color:G.accent, fontWeight:600 }}>{b.auftraggeber_firma || b.auftraggeber_name}</span>
+                  <StatusBadge status={b.status || 'erstellt'} />
                   {b.pruefpunkte_count > 0 && <span style={{ fontSize:10, background:'#f0fdf4', borderRadius:6, padding:'2px 8px', color:G.green, fontWeight:600 }}>{b.pruefpunkte_count} Punkte</span>}
                 </div>
               </div>
@@ -411,7 +427,7 @@ function NeueBegehung({ user, setPage, onCreated }) {
       ...form,
       user_id: user.id,
       gesamtnote: null,
-      status: 'in_bearbeitung',
+      status: 'erstellt',
     }).select().single()
     if (error) { toast.error(error.message); setSaving(false); return }
     toast.success('Begehung angelegt!')
@@ -753,6 +769,11 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       if (recipient === 'ag_beide') toast.success('Beide Protokolle an AG versendet!')
       else if (recipient === 'ag_oeffentlich') toast.success('Öffentliches Protokoll an AG versendet!')
       else toast.success('Öffentliches Protokoll an Bauherr versendet!')
+      // Status auf 'versendet' setzen (nur wenn noch nicht abgeschlossen)
+      if (begehung.status !== 'abgeschlossen') {
+        await sb.from('begehungen').update({ status: 'versendet' }).eq('id', begehung.id)
+        setBegehung(b => ({ ...b, status: 'versendet' }))
+      }
     } catch (e) {
       toast.error('Versand fehlgeschlagen')
     }
@@ -775,7 +796,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
           <button onClick={() => setPage('begehungen')} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:34, height:34, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0, cursor:'pointer' }}>←</button>
           <div style={{ flex:1, minWidth:0 }}>
             <p style={{ fontSize:11, color:'rgba(255,255,255,0.75)', margin:'0 0 2px' }}>{begehung.gewerk} · {formatDate(begehung.datum)}</p>
-            <h1 style={{ fontSize:17, fontWeight:800, color:'#fff', margin:0, lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{begehung.titel}</h1>
+            <h1 style={{ fontSize:17, fontWeight:800, color:'#fff', margin:'0 0 4px', lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{begehung.titel}</h1>
+            <StatusBadge status={begehung.status || 'erstellt'} />
           </div>
           {begehung.gesamtnote && <NoteCircle n={begehung.gesamtnote} size={40} />}
         </div>
@@ -866,10 +888,13 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
                     {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} Öffentl. an Bauherr
                   </button>
                 </div>
-                {begehung.status !== 'abgeschlossen' && (
+                {begehung.status === 'versendet' && (
                   <button style={{ background:G.green, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', fontSize:13, fontWeight:700, cursor:'pointer', width:'100%', marginTop:4 }} onClick={finalize}>
-                    ✓ Begehung abschließen
+                    ✓ Als abgeschlossen markieren
                   </button>
+                )}
+                {begehung.status === 'erstellt' && (
+                  <p style={{ fontSize:11, color:G.muted, textAlign:'center', margin:'4px 0 0' }}>Zuerst Protokoll versenden um abzuschließen</p>
                 )}
               </div>
             )}
@@ -1129,8 +1154,8 @@ function AdminPanel() {
               <p style={{ fontSize:13, fontWeight:600 }}>{b.titel}</p>
               <p style={{ fontSize:11, color:G.muted }}>{b.auftraggeber_firma || b.auftraggeber_name} · {formatDate(b.datum)}</p>
             </div>
-            <span style={{ fontSize:11, padding:'3px 8px', borderRadius:6, background: b.status === 'abgeschlossen' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: b.status === 'abgeschlossen' ? G.green : G.accent, fontWeight:600 }}>
-              {b.status === 'abgeschlossen' ? 'Abgeschlossen' : 'Offen'}
+            <span style={{ fontSize:11, padding:'3px 8px', borderRadius:6, background: BEGEHUNG_STATUS[b.status]?.bg || '#dbeafe', color: BEGEHUNG_STATUS[b.status]?.color || G.blue, fontWeight:600 }}>
+              {BEGEHUNG_STATUS[b.status]?.label || 'Erstellt'}
             </span>
           </div>
         ))}
