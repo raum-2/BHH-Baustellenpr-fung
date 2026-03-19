@@ -1215,8 +1215,6 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         const path = 'protokolle/' + begehung.id + '_' + type + '_' + Date.now() + '.pdf'
         await sb.storage.from('bhh-photos').upload(path, blob, { contentType: 'application/pdf', upsert: true })
         const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
-        // Also trigger local download
-        d.save('Protokoll_' + (type === 'oeffentlich' ? 'Oeffentlich' : 'Intern') + '_' + (begehung.titel||'').replace(/[^a-zA-Z0-9]/g,'_') + '.pdf')
         return data?.publicUrl || null
       }
 
