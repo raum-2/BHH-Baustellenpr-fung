@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import jsPDF from 'jspdf'
+
 import { useState, useEffect, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Toaster, toast } from 'react-hot-toast'
@@ -99,6 +99,7 @@ async function imgToBase64(url) {
 }
 
 async function generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl, creatorName }) {
+  const { jsPDF } = await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const pW = 210, pH = 297, ml = 18, mr = 18, cW = pW - ml - mr
   let y = 0
