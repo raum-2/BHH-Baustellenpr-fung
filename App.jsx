@@ -8,7 +8,7 @@ const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON)
 
-const GEWERKE = ['Rohbau','Fassade','Fenster & Türen','Dach','Innenausbau','Haustechnik','Elektro','Sanitär','Böden','Außenanlagen','Sonstiges']
+const GEWERKE = ['Rohbau','Ausbau / Fertigstellung']
 const NOTEN = [
   { n:1, label:'Besser als gefordert', color:'#10b981', bg:'rgba(16,185,129,0.15)' },
   { n:2, label:'Alle Forderungen erfüllt', color:'#3b82f6', bg:'rgba(59,130,246,0.15)' },
@@ -331,7 +331,7 @@ function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading }) 
                 <p style={{ fontWeight:700, fontSize:14, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.titel}</p>
                 <p style={{ fontSize:12, color:G.muted, marginBottom:6 }}>{b.gewerk} · {formatDate(b.datum)}</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:10, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 8px', color:G.muted }}>{b.auftraggeber_name}</span>
+                  <span style={{ fontSize:10, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 8px', color:G.muted }}>{b.auftraggeber_firma || b.auftraggeber_name}</span>
                   {b.pruefpunkte_count > 0 && <span style={{ fontSize:10, background:'rgba(245,158,11,0.1)', borderRadius:6, padding:'2px 8px', color:G.accent }}>{b.pruefpunkte_count} Punkte</span>}
                 </div>
               </div>
@@ -349,8 +349,8 @@ function NeueBegehung({ user, setPage, onCreated }) {
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    titel: '', adresse: '', auftraggeber_name: '', auftraggeber_email: '',
-    kunde_name: '', sachverstaendiger: user?.user_metadata?.full_name || '',
+    titel: '', adresse: '', auftraggeber_firma: '', vertreter_ag: '', auftraggeber_email: '',
+    kunde_name: '', kunde_email: '', sachverstaendiger: user?.user_metadata?.full_name || 'Ing. Ferid Mujcinovic MBA',
     datum: new Date().toISOString().split('T')[0],
     uhrzeit: new Date().toTimeString().slice(0,5),
     gewerk: GEWERKE[0], bemerkungen: '',
@@ -358,7 +358,7 @@ function NeueBegehung({ user, setPage, onCreated }) {
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleCreate() {
-    if (!form.titel || !form.auftraggeber_name || !form.auftraggeber_email) {
+    if (!form.titel || !form.auftraggeber_firma || !form.auftraggeber_email) {
       toast.error('Bitte alle Pflichtfelder ausfüllen')
       return
     }
@@ -401,7 +401,7 @@ function NeueBegehung({ user, setPage, onCreated }) {
             <input style={inp} value={form.titel} onChange={e => upd('titel', e.target.value)} placeholder="z.B. EFH Musterstraße - Rohbauabnahme" autoFocus />
             <label style={lbl}>Projektadresse *</label>
             <input style={inp} value={form.adresse} onChange={e => upd('adresse', e.target.value)} placeholder="Straße, PLZ Ort" />
-            <label style={lbl}>Gewerk / Bereich *</label>
+            <label style={lbl}>Ausbaustufe *</label>
             <select style={inp} value={form.gewerk} onChange={e => upd('gewerk', e.target.value)}>
               {GEWERKE.map(g => <option key={g}>{g}</option>)}
             </select>
@@ -410,12 +410,16 @@ function NeueBegehung({ user, setPage, onCreated }) {
 
         {step === 2 && (
           <div className="fade-up">
-            <label style={lbl}>Auftraggeber *</label>
-            <input style={inp} value={form.auftraggeber_name} onChange={e => upd('auftraggeber_name', e.target.value)} placeholder="Name / Firma" />
-            <label style={lbl}>E-Mail Auftraggeber *</label>
+            <label style={lbl}>Auftraggeber Firma *</label>
+            <input style={inp} value={form.auftraggeber_firma} onChange={e => upd('auftraggeber_firma', e.target.value)} placeholder="Firma / Unternehmen" />
+            <label style={lbl}>Vertreter AG (Name) *</label>
+            <input style={inp} value={form.vertreter_ag} onChange={e => upd('vertreter_ag', e.target.value)} placeholder="Vor- und Nachname" />
+            <label style={lbl}>E-Mail AG *</label>
             <input style={inp} type="email" value={form.auftraggeber_email} onChange={e => upd('auftraggeber_email', e.target.value)} placeholder="email@firma.at" />
-            <label style={lbl}>Kunde / Bauherr (für wen gebaut wird)</label>
+            <label style={lbl}>Kunde / Bauherr (Name)</label>
             <input style={inp} value={form.kunde_name} onChange={e => upd('kunde_name', e.target.value)} placeholder="Name des Bauherrn" />
+            <label style={lbl}>E-Mail Kunde</label>
+            <input style={inp} type="email" value={form.kunde_email} onChange={e => upd('kunde_email', e.target.value)} placeholder="email@kunde.at" />
             <label style={lbl}>Sachverständiger</label>
             <input style={inp} value={form.sachverstaendiger} onChange={e => upd('sachverstaendiger', e.target.value)} placeholder="Name SV" />
           </div>
@@ -733,7 +737,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         <div style={{ ...card({ marginBottom:16, padding:14 }) }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
             {[
-              ['Auftraggeber', begehung.auftraggeber_name],
+              ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],
               ['Bauherr', begehung.kunde_name || '–'],
               ['Sachverständiger', begehung.sachverstaendiger],
               ['Adresse', begehung.adresse],
@@ -997,7 +1001,7 @@ function AdminPanel() {
             <NoteCircle n={b.gesamtnote} size={32} />
             <div style={{ flex:1 }}>
               <p style={{ fontSize:13, fontWeight:600 }}>{b.titel}</p>
-              <p style={{ fontSize:11, color:G.muted }}>{b.auftraggeber_name} · {formatDate(b.datum)}</p>
+              <p style={{ fontSize:11, color:G.muted }}>{b.auftraggeber_firma || b.auftraggeber_name} · {formatDate(b.datum)}</p>
             </div>
             <span style={{ fontSize:11, padding:'3px 8px', borderRadius:6, background: b.status === 'abgeschlossen' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)', color: b.status === 'abgeschlossen' ? G.green : G.accent, fontWeight:600 }}>
               {b.status === 'abgeschlossen' ? 'Abgeschlossen' : 'Offen'}
