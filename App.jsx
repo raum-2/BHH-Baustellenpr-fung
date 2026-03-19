@@ -20,9 +20,9 @@ const STATUS_OPT = ['In Ordnung','Beobachtung','Verbesserung empfohlen','Mangel'
 
 // ─── CSS-in-JS ───────────────────────────────────────────────
 const G = {
-  bg: '#0f1117', card: '#1a1d27', border: '#2a2d3a',
-  text: '#f0f0f0', muted: '#8b8fa8', accent: '#f59e0b',
-  green: '#10b981', red: '#ef4444', blue: '#3b82f6',
+  bg: '#f8f8f8', card: '#ffffff', border: '#e5e7eb',
+  text: '#1a1a1a', muted: '#6b7280', accent: '#cc1f1f',
+  green: '#16a34a', red: '#dc2626', blue: '#2563eb',
 }
 
 const css = `
@@ -31,7 +31,7 @@ const css = `
   input,select,textarea { color: ${G.text}; background: ${G.card}; border: 1.5px solid ${G.border}; border-radius: 8px; padding: 10px 13px; font-size: 14px; outline: none; width: 100%; transition: border-color .15s; }
   input:focus,select:focus,textarea:focus { border-color: ${G.accent}; }
   input::placeholder,textarea::placeholder { color: ${G.muted}; }
-  select option { background: #1a1d27; }
+  select option { background: #ffffff; color: #1a1a1a; }
   button { cursor: pointer; }
   @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -160,18 +160,18 @@ function LoginScreen({ onLogin }) {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: 'linear-gradient(135deg, #f0f4ff 0%, #e8edf5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div style={{ minHeight: '100dvh', background: 'linear-gradient(135deg, #fff5f5 0%, #fef2f2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 420 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <img src="/logo.png" alt="BHH Logo" style={{ width: 140, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#1a1d27', marginBottom: 4 }}>Bauherren Hilfe</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#1a1a1a', marginBottom: 4 }}>Bauherren Hilfe</h1>
           <p style={{ color: '#6b7280', fontSize: 13 }}>Professionelle Baustellenprüfung</p>
         </div>
 
         <div style={card()}>
           {/* Tab */}
-          <div style={{ display: 'flex', background: G.bg, borderRadius: 10, padding: 4, marginBottom: 24 }}>
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 4, marginBottom: 24 }}>
             {['login','register'].map(m => (
               <button key={m} onClick={() => setMode(m)} style={{ flex:1, padding:'8px', borderRadius:8, border:'none', background: mode===m ? G.accent : 'transparent', color: mode===m ? '#000' : G.muted, fontWeight:700, fontSize:13, cursor:'pointer' }}>
                 {m === 'login' ? 'Anmelden' : 'Registrieren'}
@@ -708,7 +708,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   return (
     <div style={{ paddingBottom: 100 }}>
       {/* Header */}
-      <div style={{ background:`linear-gradient(135deg, #1a1d27, #0f1117)`, padding:'16px 20px 0', borderBottom:`1px solid ${G.border}` }}>
+      <div style={{ background:'linear-gradient(135deg, #cc1f1f, #991515)', padding:'16px 20px 0', borderBottom:`1px solid ${G.border}` }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
           <button onClick={() => setPage('begehungen')} style={{ background:'transparent', border:'none', color:G.muted, fontSize:20, cursor:'pointer' }}>←</button>
           <div style={{ flex:1 }}>
@@ -1062,9 +1062,9 @@ function App() {
   const isAdmin = user?.user_metadata?.role === 'admin' || user?.user_metadata?.role === 'superadmin'
 
   if (loading) return (
-    <div style={{ height:'100dvh', display:'flex', alignItems:'center', justifyContent:'center', background:G.bg }}>
+    <div style={{ height:'100dvh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8f8f8' }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ fontSize:40, marginBottom:12 }}>🏗</div>
+        <img src='/logo.png' alt='BHH' style={{ width:80, marginBottom:12 }} />
         <span className="spinner" style={{ width:30, height:30 }} />
       </div>
     </div>
@@ -1090,7 +1090,7 @@ function App() {
   }
 
   return (
-    <div style={{ background:G.bg, minHeight:'100dvh', color:G.text }}>
+    <div style={{ background:'#f8f8f8', minHeight:'100dvh', color:G.text }}>
       <style>{css}</style>
       {renderPage()}
       {page !== 'neueBegehung' && page !== 'begehungDetail' && (
@@ -1104,6 +1104,6 @@ function App() {
 createRoot(document.getElementById('root')).render(
   <>
     <App />
-    <Toaster position="top-center" toastOptions={{ style: { background:'#1a1d27', color:'#f0f0f0', border:'1px solid #2a2d3a', fontSize:13 } }} />
+    <Toaster position="top-center" toastOptions={{ style: { background:'#ffffff', color:'#1a1a1a', border:'1px solid #e5e7eb', fontSize:13 } }} />
   </>
 )
