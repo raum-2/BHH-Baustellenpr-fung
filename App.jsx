@@ -125,7 +125,7 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
   let y = 0
   const isOeff = type === 'oeffentlich'
   const red = [204, 31, 31]
-  const darkRed = [153, 21, 21]
+  const darkRed = [127, 29, 29]
   const white = [255, 255, 255]
   const dark = [17, 17, 17]
   const muted = [107, 114, 128]
@@ -169,7 +169,7 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
   }
 
   // ── Header ──
-  doc.setFillColor(...red)
+  doc.setFillColor(...(isOeff ? red : darkRed))
   doc.rect(0, 0, pW, 46, 'F')
 
   // Logo text
@@ -460,7 +460,7 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     doc.setFontSize(7)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...muted)
-    doc.text('Bauherrenhilfe · bauherrenhilfe.at', ml, pH - 5)
+    doc.text(isOeff ? 'Bauherrenhilfe · bauherrenhilfe.at' : 'VERTRAULICH · Bauherrenhilfe · bauherrenhilfe.at', ml, pH - 5)
     doc.text('Seite ' + i + ' / ' + pageCount, pW - mr, pH - 5, { align: 'right' })
   }
 
