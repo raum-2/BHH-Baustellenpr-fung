@@ -1264,18 +1264,31 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
 }
 
 // ─── Projekte ────────────────────────────────────────────────
-function Projekte({ setPage }) {
+function Projekte({ setPage, isSuperAdmin, userId }) {
   const [projekte, setProjekte] = useState([])
+  const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
   const [form, setForm] = useState({ name:'', adresse:'', auftraggeber:'' })
+  const [filterMonat, setFilterMonat] = useState('')
+  const [filterFirma, setFilterFirma] = useState('')
+  const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 
-  useEffect(() => { fetchProjekte() }, [])
+  useEffect(() => { fetchProjekte() }, [isSuperAdmin])
 
   async function fetchProjekte() {
     setLoading(true)
-    const { data } = await sb.from('projekte').select('*, begehungen(count)').order('created_at', { ascending:false })
-    setProjekte(data || [])
+    if (isSuperAdmin) {
+      const [pRes, prRes] = await Promise.all([
+        sb.from('projekte').select('*, begehungen(count), profiles(full_name, firma)').order('created_at', { ascending:false }),
+        sb.from('profiles').select('id, full_name, firma'),
+      ])
+      setProjekte(pRes.data || [])
+      setProfiles(prRes.data || [])
+    } else {
+      const { data } = await sb.from('projekte').select('*, begehungen(count)').order('created_at', { ascending:false })
+      setProjekte(data || [])
+    }
     setLoading(false)
   }
 
@@ -1289,52 +1302,101 @@ function Projekte({ setPage }) {
     toast.success('Projekt angelegt!')
   }
 
+  // Filter
+  const firmen = [...new Set(profiles.map(p => p.firma).filter(Boolean))]
+  const filtered = projekte.filter(p => {
+    if (filterFirma && p.profiles?.firma !== filterFirma) return false
+    if (filterMonat) {
+      const d = new Date(p.created_at)
+      if (d.getMonth() !== +filterMonat) return false
+    }
+    return true
+  })
+
   return (
-    <div style={{ padding:20, paddingBottom:100 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-        <h1 style={{ fontSize:22, fontWeight:800 }}>Projekte</h1>
-        <button style={btn('primary', { padding:'8px 16px', fontSize:13 })} onClick={() => setShowNew(true)}>+ Neu</button>
+    <div style={{ paddingBottom:100 }}>
+      {/* Header */}
+      <div style={{ background:G.accent, padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <p style={{ color:'#fff', fontSize:17, fontWeight:800, margin:0 }}>Projekte</p>
+        <button onClick={() => setShowNew(true)}
+          style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+          + Neu
+        </button>
       </div>
 
-      {showNew && (
-        <div style={{ ...card({ marginBottom:16 }) }}>
-          <label style={lbl}>Projektname *</label>
-          <input style={inp} value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} placeholder="Bauvorhaben EFH Graz" autoFocus />
-          <label style={lbl}>Adresse</label>
-          <input style={inp} value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse:e.target.value }))} placeholder="Musterstraße 1, 8010 Graz" />
-          <label style={lbl}>Auftraggeber</label>
-          <input style={inp} value={form.auftraggeber} onChange={e => setForm(f => ({ ...f, auftraggeber:e.target.value }))} placeholder="Name / Firma" />
-          <div style={{ display:'flex', gap:8, marginTop:16 }}>
-            <button style={btn('ghost', { flex:1 })} onClick={() => setShowNew(false)}>Abbrechen</button>
-            <button style={btn('primary', { flex:2 })} onClick={handleCreate}>✓ Anlegen</button>
-          </div>
-        </div>
-      )}
-
-      {loading ? <div style={{ textAlign:'center', padding:60, color:G.muted }}>Lädt…</div>
-      : projekte.length === 0 ? (
-        <div style={{ textAlign:'center', padding:60 }}>
-          <p style={{ fontSize:40, marginBottom:12 }}>🏗</p>
-          <p style={{ color:G.muted }}>Noch keine Projekte</p>
-        </div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {projekte.map(p => (
-            <div key={p.id} style={card()}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
-                <div>
-                  <p style={{ fontWeight:700, fontSize:15, marginBottom:3 }}>{p.name}</p>
-                  {p.adresse && <p style={{ fontSize:12, color:G.muted }}>{p.adresse}</p>}
-                </div>
-                <span style={{ fontSize:11, background:'rgba(245,158,11,0.1)', color:G.accent, borderRadius:8, padding:'3px 8px', fontWeight:600 }}>
-                  {p.begehungen?.[0]?.count || 0} Begehungen
-                </span>
-              </div>
-              {p.auftraggeber && <p style={{ fontSize:12, color:G.muted }}>AG: {p.auftraggeber}</p>}
+      <div style={{ padding:16 }}>
+        {/* Superadmin Filter */}
+        {isSuperAdmin && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14 }}>
+            <div>
+              <label style={lbl}>Monat</label>
+              <select style={inp} value={filterMonat} onChange={e => setFilterMonat(e.target.value)}>
+                <option value=''>Alle Monate</option>
+                {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
             </div>
-          ))}
-        </div>
-      )}
+            <div>
+              <label style={lbl}>Firma / Ersteller</label>
+              <select style={inp} value={filterFirma} onChange={e => setFilterFirma(e.target.value)}>
+                <option value=''>Alle Firmen</option>
+                {firmen.map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {showNew && (
+          <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:14 }}>
+            <label style={lbl}>Projektname *</label>
+            <input style={inp} value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} placeholder="Bauvorhaben EFH Graz" autoFocus />
+            <label style={lbl}>Adresse</label>
+            <input style={inp} value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse:e.target.value }))} placeholder="Musterstraße 1, 8010 Graz" />
+            <label style={lbl}>Auftraggeber</label>
+            <input style={inp} value={form.auftraggeber} onChange={e => setForm(f => ({ ...f, auftraggeber:e.target.value }))} placeholder="Name / Firma" />
+            <div style={{ display:'flex', gap:8, marginTop:14 }}>
+              <button onClick={() => setShowNew(false)}
+                style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:600, color:G.muted, cursor:'pointer' }}>
+                Abbrechen
+              </button>
+              <button onClick={handleCreate}
+                style={{ flex:2, background:G.accent, border:'none', borderRadius:9, padding:'11px', fontSize:13, fontWeight:700, color:'#fff', cursor:'pointer' }}>
+                ✓ Anlegen
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading ? <div style={{ textAlign:'center', padding:60, color:G.muted }}>Lädt…</div>
+        : filtered.length === 0 ? (
+          <div style={{ textAlign:'center', padding:60 }}>
+            <p style={{ fontSize:32, marginBottom:8 }}>📁</p>
+            <p style={{ color:G.muted }}>Keine Projekte gefunden</p>
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {filtered.map(p => (
+              <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontWeight:700, fontSize:14, margin:'0 0 3px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.name}</p>
+                    {p.adresse && <p style={{ fontSize:12, color:G.muted, margin:0 }}>{p.adresse}</p>}
+                  </div>
+                  <span style={{ fontSize:11, background:G.accentLight, color:G.accent, borderRadius:7, padding:'3px 9px', fontWeight:700, flexShrink:0, marginLeft:8 }}>
+                    {p.begehungen?.[0]?.count || 0} Beg.
+                  </span>
+                </div>
+                {p.auftraggeber && <p style={{ fontSize:11, color:G.muted, margin:'2px 0 0' }}>AG: {p.auftraggeber}</p>}
+                {isSuperAdmin && p.profiles && (
+                  <p style={{ fontSize:11, color:G.accent, margin:'4px 0 0', fontWeight:600 }}>
+                    {p.profiles.firma || p.profiles.full_name}
+                  </p>
+                )}
+                <p style={{ fontSize:10, color:G.muted, margin:'3px 0 0' }}>{formatDate(p.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1606,7 +1668,7 @@ function App() {
       case 'begehungen':     return <BegehungenListe setPage={setPage} setSelectedBegehung={setSelectedBegehung} begehungen={begehungen} loading={false} onDelete={id => setBegehungen(prev => prev.filter(b => b.id !== id))} />
       case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
-      case 'projekte':       return <Projekte setPage={setPage} />
+      case 'projekte':       return <Projekte setPage={setPage} isSuperAdmin={isSuperAdmin} userId={user?.id} />
       case 'admin':          return <AdminPanel />
       default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }

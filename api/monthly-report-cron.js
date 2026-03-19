@@ -1,29 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 
-const sb = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY)
+const sb = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
 
 const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 
 export default async function handler(req, res) {
-  // Only allow Vercel cron calls
-  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    // Allow running without auth for simplicity (Vercel cron doesn't need auth by default)
-  }
-
   const now = new Date()
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
 
-  // Only run on actual last day of month
-  if (tomorrow.getDate() !== 1) {
-    return res.status(200).json({ skipped: true, reason: 'Not last day of month' })
-  }
-
-  const month = now.getMonth()
-  const year = now.getFullYear()
+  // Vormonat berechnen (läuft am 1. des Folgemonats)
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const month = prevMonth.getMonth()
+  const year = prevMonth.getFullYear()
   const monat = MONTHS[month] + ' ' + year
 
-  // Fetch all begehungen for this month
   const startDate = new Date(year, month, 1).toISOString().split('T')[0]
   const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0]
 
@@ -53,13 +42,13 @@ export default async function handler(req, res) {
 
   const total = (begehungen || []).length
 
-  // Call monthly-report API
-  const baseUrl = `https://${req.headers.host}`
-  await fetch(`${baseUrl}/api/monthly-report`, {
+  const baseUrl = 'https://' + req.headers.host
+  const r = await fetch(baseUrl + '/api/monthly-report', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rows, monat, total }),
   })
 
+  if (!r.ok) return res.status(500).json({ error: 'Report send failed' })
   return res.status(200).json({ ok: true, monat, total, firmen: rows.length })
 }
