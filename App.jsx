@@ -755,20 +755,19 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   return (
     <div style={{ paddingBottom: 100 }}>
       {/* Header */}
-      <div style={{ background:'linear-gradient(135deg, #cc1f1f, #991515)', padding:'16px 20px 0', borderBottom:`1px solid ${G.border}` }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-          <button onClick={() => setPage('begehungen')} style={{ background:'transparent', border:'none', color:G.muted, fontSize:20, cursor:'pointer' }}>←</button>
-          <div style={{ flex:1 }}>
-            <p style={{ fontSize:11, color:G.muted, marginBottom:2 }}>{begehung.gewerk} · {formatDate(begehung.datum)}</p>
-            <h1 style={{ fontSize:17, fontWeight:800, lineHeight:1.3 }}>{begehung.titel}</h1>
+      <div style={{ background: G.accent }}>
+        <div style={{ padding:'14px 16px', display:'flex', alignItems:'center', gap:10 }}>
+          <button onClick={() => setPage('begehungen')} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:34, height:34, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0, cursor:'pointer' }}>←</button>
+          <div style={{ flex:1, minWidth:0 }}>
+            <p style={{ fontSize:11, color:'rgba(255,255,255,0.75)', margin:'0 0 2px' }}>{begehung.gewerk} · {formatDate(begehung.datum)}</p>
+            <h1 style={{ fontSize:17, fontWeight:800, color:'#fff', margin:0, lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{begehung.titel}</h1>
           </div>
           {begehung.gesamtnote && <NoteCircle n={begehung.gesamtnote} size={40} />}
         </div>
-
         {/* Tabs */}
-        <div style={{ display:'flex', gap:0, overflowX:'auto' }}>
-          {[['liste','Prüfpunkte'],['oeffentlich','📄 Öffentlich'],['intern','🔒 Intern']].map(([id, label]) => (
-            <button key={id} onClick={() => setViewMode(id)} style={{ padding:'10px 16px', border:'none', background:'transparent', color: viewMode===id ? G.accent : G.muted, fontWeight: viewMode===id ? 700 : 400, fontSize:13, cursor:'pointer', borderBottom:`2px solid ${viewMode===id ? G.accent : 'transparent'}`, whiteSpace:'nowrap', flexShrink:0 }}>
+        <div style={{ display:'flex', gap:0, overflowX:'auto', borderTop:'1px solid rgba(255,255,255,0.15)' }}>
+          {[['liste','Prüfpunkte'],['oeffentlich','Öffentlich'],['intern','Intern']].map(([id, label]) => (
+            <button key={id} onClick={() => setViewMode(id)} style={{ padding:'10px 18px', border:'none', background:'transparent', color: viewMode===id ? '#fff' : 'rgba(255,255,255,0.6)', fontWeight: viewMode===id ? 700 : 400, fontSize:13, cursor:'pointer', borderBottom: viewMode===id ? '2px solid #fff' : '2px solid transparent', whiteSpace:'nowrap', flexShrink:0 }}>
               {label}
             </button>
           ))}
