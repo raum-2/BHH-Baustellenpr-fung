@@ -160,13 +160,13 @@ function LoginScreen({ onLogin }) {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: `linear-gradient(135deg, ${G.bg} 0%, #1a1020 100%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+    <div style={{ minHeight: '100dvh', background: 'linear-gradient(135deg, #f0f4ff 0%, #e8edf5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 420 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <img src="/logo.png" alt="BHH Logo" style={{ width: 140, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: G.text, marginBottom: 4 }}>Bauherren Hilfe</h1>
-          <p style={{ color: G.muted, fontSize: 13 }}>Professionelle Baustellenprüfung</p>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#1a1d27', marginBottom: 4 }}>Bauherren Hilfe</h1>
+          <p style={{ color: '#6b7280', fontSize: 13 }}>Professionelle Baustellenprüfung</p>
         </div>
 
         <div style={card()}>
