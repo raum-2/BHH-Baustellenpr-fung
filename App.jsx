@@ -317,8 +317,20 @@ function Dashboard({ user, profile, setPage, stats }) {
 }
 
 // ─── Begehungen Liste ────────────────────────────────────────
-function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading }) {
+function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading, onDelete }) {
   const [filter, setFilter] = useState('alle')
+  const [deletingId, setDeletingId] = useState(null)
+
+  async function handleDelete(e, id) {
+    e.stopPropagation()
+    if (!window.confirm('Begehung wirklich löschen? Alle Prüfpunkte und Fotos werden entfernt.')) return
+    setDeletingId(id)
+    await sb.from('pruefpunkte').delete().eq('begehung_id', id)
+    await sb.from('begehungen').delete().eq('id', id)
+    toast.success('Begehung gelöscht')
+    setDeletingId(null)
+    if (onDelete) onDelete(id)
+  }
   const filtered = begehungen.filter(b => {
     if (filter === 'alle') return true
     if (filter === 'mangel') return b.gesamtnote >= 4
@@ -352,18 +364,21 @@ function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading }) 
       ) : (
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {filtered.map(b => (
-            <div key={b.id} style={{ ...card({ cursor:'pointer' }), display:'flex', gap:14, alignItems:'flex-start' }}
+            <div key={b.id} style={{ background:G.card, border:`0.5px solid ${G.border}`, borderRadius:12, padding:14, display:'flex', gap:14, alignItems:'flex-start', cursor:'pointer' }}
               onClick={() => { setSelectedBegehung(b); setPage('begehungDetail') }}>
               <NoteCircle n={b.gesamtnote} size={44} />
               <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontWeight:700, fontSize:14, marginBottom:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.titel}</p>
-                <p style={{ fontSize:12, color:G.muted, marginBottom:6 }}>{b.gewerk} · {formatDate(b.datum)}</p>
+                <p style={{ fontWeight:700, fontSize:14, margin:'0 0 3px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.titel}</p>
+                <p style={{ fontSize:12, color:G.muted, margin:'0 0 6px' }}>{b.gewerk} · {formatDate(b.datum)}</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:10, background:'rgba(255,255,255,0.06)', borderRadius:6, padding:'2px 8px', color:G.muted }}>{b.auftraggeber_firma || b.auftraggeber_name}</span>
-                  {b.pruefpunkte_count > 0 && <span style={{ fontSize:10, background:'rgba(245,158,11,0.1)', borderRadius:6, padding:'2px 8px', color:G.accent }}>{b.pruefpunkte_count} Punkte</span>}
+                  <span style={{ fontSize:10, background:G.accentLight, borderRadius:6, padding:'2px 8px', color:G.accent, fontWeight:600 }}>{b.auftraggeber_firma || b.auftraggeber_name}</span>
+                  {b.pruefpunkte_count > 0 && <span style={{ fontSize:10, background:'#f0fdf4', borderRadius:6, padding:'2px 8px', color:G.green, fontWeight:600 }}>{b.pruefpunkte_count} Punkte</span>}
                 </div>
               </div>
-              <span style={{ color:G.muted, fontSize:20 }}>›</span>
+              <button onClick={e => handleDelete(e, b.id)} disabled={deletingId === b.id}
+                style={{ background:'#fef2f2', border:`0.5px solid #fca5a5`, borderRadius:8, width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', color:G.red, fontSize:16, cursor:'pointer', flexShrink:0 }}>
+                {deletingId === b.id ? <span className="spinner" style={{ width:14, height:14, borderWidth:2 }}/> : '🗑'}
+              </button>
             </div>
           ))}
         </div>
@@ -1112,7 +1127,7 @@ function App() {
   function renderPage() {
     switch (page) {
       case 'dashboard':      return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} />
-      case 'begehungen':     return <BegehungenListe setPage={setPage} setSelectedBegehung={setSelectedBegehung} begehungen={begehungen} loading={false} />
+      case 'begehungen':     return <BegehungenListe setPage={setPage} setSelectedBegehung={setSelectedBegehung} begehungen={begehungen} loading={false} onDelete={id => setBegehungen(prev => prev.filter(b => b.id !== id))} />
       case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} />
