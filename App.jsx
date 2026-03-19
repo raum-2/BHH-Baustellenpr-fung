@@ -771,6 +771,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   const [punkte, setPunkte] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showPreview, setShowPreview] = useState(null) // null | 'ag_beide' | 'ag_oeffentlich' | 'bauherr'
   const [editPunkt, setEditPunkt] = useState(null)
   const [sending, setSending] = useState(false)
   const [viewMode, setViewMode] = useState('liste') // liste | oeffentlich | intern
@@ -850,6 +851,108 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   }
 
   const noteCfg = NOTEN.find(x => x.n === begehung.gesamtnote)
+
+  function PreviewModal() {
+    if (!showPreview) return null
+    const showOeff = showPreview === 'ag_beide' || showPreview === 'ag_oeffentlich' || showPreview === 'bauherr'
+    const showIntern = showPreview === 'ag_beide'
+    const recipientLabel = showPreview === 'ag_beide' ? 'Beide Protokolle an AG senden'
+      : showPreview === 'ag_oeffentlich' ? 'Öffentliches Protokoll an AG senden'
+      : 'Öffentliches Protokoll an Bauherr senden'
+
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:2000, overflowY:'auto', padding:'16px' }}>
+        <div style={{ background:'#fff', borderRadius:16, maxWidth:680, margin:'0 auto', overflow:'hidden' }}>
+          {/* Header */}
+          <div style={{ background:G.accent, padding:'14px 16px', display:'flex', alignItems:'center', gap:10, position:'sticky', top:0, zIndex:10 }}>
+            <button onClick={() => setShowPreview(null)}
+              style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:32, height:32, fontSize:18, cursor:'pointer', flexShrink:0 }}>←</button>
+            <p style={{ color:'#fff', fontWeight:700, fontSize:14, margin:0, flex:1 }}>Vorschau & Senden</p>
+            <button onClick={() => { setShowPreview(null); sendProtocol(showPreview) }} disabled={!!sending}
+              style={{ background:'rgba(255,255,255,0.25)', border:'1px solid rgba(255,255,255,0.5)', color:'#fff', borderRadius:9, padding:'8px 14px', fontSize:13, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+              {sending ? <span className="spinner" style={{ width:14, height:14, borderWidth:2, borderTopColor:'#fff' }}/> : '📧'} Senden
+            </button>
+          </div>
+
+          <div style={{ padding:16 }}>
+            {/* Öffentliches Protokoll */}
+            {showOeff && (
+              <div style={{ marginBottom: showIntern ? 24 : 0 }}>
+                <div style={{ background:G.accentLight, border:`0.5px solid ${G.accentBorder}`, borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <p style={{ fontSize:13, fontWeight:700, color:G.accent, margin:0 }}>Öffentliches Protokoll</p>
+                  <button onClick={() => exportPDF('oeffentlich')}
+                    style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:7, padding:'5px 10px', fontSize:11, fontWeight:600, color:G.text, cursor:'pointer' }}>📄 PDF</button>
+                </div>
+                {/* Meta */}
+                <div style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:12, marginBottom:10 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    {[['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],['Bauherr', begehung.kunde_name || '–'],['SV', begehung.sachverstaendiger],['Datum', formatDate(begehung.datum)]].map(([k,v]) => (
+                      <div key={k}>
+                        <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 1px' }}>{k}</p>
+                        <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {punkte.map((p, i) => (
+                  <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:10, padding:12, marginBottom:8 }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                      <NoteCircle n={p.note} size={28} />
+                      <p style={{ fontWeight:700, fontSize:13, margin:0 }}>{i+1}. {p.titel}</p>
+                    </div>
+                    {p.fotos?.filter(f=>f.url).slice(0,1).map((f,j) => (
+                      <img key={j} src={f.url} alt="" style={{ width:'100%', maxHeight:160, objectFit:'cover', borderRadius:8, marginBottom:8 }} />
+                    ))}
+                    <p style={{ fontSize:12, color:G.text, lineHeight:1.6, margin:0 }}>{getEditedText(p,'oeffentlich') || '–'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Internes Protokoll */}
+            {showIntern && (
+              <div>
+                <div style={{ background:'#fff5f5', border:`0.5px solid #fca5a5`, borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <p style={{ fontSize:13, fontWeight:700, color:G.red, margin:0 }}>Internes Protokoll</p>
+                  <button onClick={() => exportPDF('intern')}
+                    style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:7, padding:'5px 10px', fontSize:11, fontWeight:600, color:G.text, cursor:'pointer' }}>📄 PDF</button>
+                </div>
+                <div style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:12, marginBottom:10 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                    {[['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],['Bauherr', begehung.kunde_name || '–'],['SV', begehung.sachverstaendiger],['Datum', formatDate(begehung.datum)]].map(([k,v]) => (
+                      <div key={k}>
+                        <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 1px' }}>{k}</p>
+                        <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {punkte.map((p, i) => (
+                  <div key={p.id} style={{ background: p.note >= 4 ? '#fff5f5' : '#fff', border:`0.5px solid ${p.note >= 4 ? '#fca5a5' : G.border}`, borderRadius:10, padding:12, marginBottom:8 }}>
+                    <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:8 }}>
+                      <NoteCircle n={p.note} size={28} />
+                      <p style={{ fontWeight:700, fontSize:13, margin:0 }}>{i+1}. {p.titel}</p>
+                    </div>
+                    {p.fotos?.filter(f=>f.url).map((f,j) => (
+                      <img key={j} src={f.url} alt="" style={{ width:'100%', maxHeight:160, objectFit:'cover', borderRadius:8, marginBottom:8 }} />
+                    ))}
+                    <p style={{ fontSize:12, color:G.text, lineHeight:1.6, margin:0 }}>{getEditedText(p,'intern') || '–'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Senden Button unten */}
+            <button onClick={() => { setShowPreview(null); sendProtocol(showPreview) }} disabled={!!sending}
+              style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'14px', width:'100%', fontSize:14, fontWeight:700, cursor:'pointer', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              {sending ? <span className="spinner"/> : '📧'} {recipientLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const [editTexts, setEditTexts] = useState({}) // { [punktId_type]: text }
   const [editMode, setEditMode] = useState({})   // { [punktId_type]: bool }
 
@@ -1038,13 +1141,13 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
             {punkte.length > 0 && (
               <div style={{ marginTop:20, display:'flex', flexDirection:'column', gap:10 }}>
                 <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', margin:'4px 0 2px' }}>Protokoll versenden</p>
-                <button onClick={() => sendProtocol('ag_beide')} disabled={!!sending}
+                <button onClick={() => setShowPreview('ag_beide')}
                   style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
-                  {sending === 'ag_beide' ? <span className="spinner"/> : '📧'} Beide Protokolle an AG
+                  👁 Vorschau & Beide Protokolle an AG
                 </button>
-                <button onClick={() => sendProtocol('bauherr')} disabled={!!sending}
+                <button onClick={() => setShowPreview('bauherr')}
                   style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
-                  {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} Öffentliches Protokoll an Bauherr
+                  👁 Vorschau & Öffentliches an Bauherr
                 </button>
                 {begehung.status === 'versendet' && (
                   <button style={{ background:G.green, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', fontSize:13, fontWeight:700, cursor:'pointer', width:'100%', marginTop:4 }} onClick={finalize}>
@@ -1141,13 +1244,13 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
 
             {/* Versand Buttons */}
             <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:8 }}>
-              <button onClick={() => sendProtocol('ag_oeffentlich')} disabled={!!sending}
+              <button onClick={() => setShowPreview('ag_oeffentlich')}
                 style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
-                {sending === 'ag_oeffentlich' ? <span className="spinner"/> : '📧'} An Auftraggeber senden
+                👁 Vorschau & An Auftraggeber senden
               </button>
-              <button onClick={() => sendProtocol('bauherr')} disabled={!!sending}
+              <button onClick={() => setShowPreview('bauherr')}
                 style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
-                {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} An Bauherr senden
+                👁 Vorschau & An Bauherr senden
               </button>
             </div>
           </div>
@@ -1242,15 +1345,16 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
 
             {/* Versand Button */}
             <div style={{ marginTop:16 }}>
-              <button onClick={() => sendProtocol('ag_beide')} disabled={!!sending}
+              <button onClick={() => setShowPreview('ag_beide')}
                 style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
-                {sending === 'ag_beide' ? <span className="spinner"/> : '📧'} Beide Protokolle an AG senden
+                👁 Vorschau & Beide Protokolle an AG senden
               </button>
             </div>
           </div>
         )}
       </div>
 
+      <PreviewModal />
       {showModal && (
         <PruefpunktModal
           begehungId={begehung.id}
