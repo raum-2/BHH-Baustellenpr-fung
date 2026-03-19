@@ -763,9 +763,12 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       const res = await fetch('/api/send-protocol', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ begehung, punkte, recipient }),
+        body: JSON.stringify({ begehung, punkte: getPunkteForSend(), recipient }),
       })
-      if (!res.ok) throw new Error('Fehler')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Versand fehlgeschlagen')
+      }
       if (recipient === 'ag_beide') toast.success('Beide Protokolle an AG versendet!')
       else if (recipient === 'ag_oeffentlich') toast.success('Öffentliches Protokoll an AG versendet!')
       else toast.success('Öffentliches Protokoll an Bauherr versendet!')
@@ -775,7 +778,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         setBegehung(b => ({ ...b, status: 'versendet' }))
       }
     } catch (e) {
-      toast.error('Versand fehlgeschlagen')
+      toast.error(e.message || 'Versand fehlgeschlagen')
     }
     setSending(null)
   }
@@ -787,6 +790,108 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   }
 
   const noteCfg = NOTEN.find(x => x.n === begehung.gesamtnote)
+  const [editTexts, setEditTexts] = useState({}) // { [punktId_type]: text }
+  const [editMode, setEditMode] = useState({})   // { [punktId_type]: bool }
+
+  function getEditedText(p, type) {
+    const key = p.id + '_' + type
+    return editTexts[key] !== undefined ? editTexts[key] : (type === 'oeffentlich' ? (p.text_oeffentlich || p.rohtext || '') : (p.text_intern || p.rohtext || ''))
+  }
+
+  async function saveEditedText(p, type) {
+    const key = p.id + '_' + type
+    const text = editTexts[key]
+    if (text === undefined) return
+    const field = type === 'oeffentlich' ? 'text_oeffentlich' : 'text_intern'
+    await sb.from('pruefpunkte').update({ [field]: text }).eq('id', p.id)
+    setPunkte(prev => prev.map(x => x.id === p.id ? { ...x, [field]: text } : x))
+    setEditMode(m => ({ ...m, [key]: false }))
+    toast.success('Text gespeichert')
+  }
+
+  function toggleEdit(p, type) {
+    const key = p.id + '_' + type
+    setEditMode(m => ({ ...m, [key]: !m[key] }))
+    if (!editTexts[key]) {
+      setEditTexts(t => ({ ...t, [key]: type === 'oeffentlich' ? (p.text_oeffentlich || p.rohtext || '') : (p.text_intern || p.rohtext || '') }))
+    }
+  }
+
+  // ── Berechne protokollText für Versand (edited oder DB) ──
+  function getPunkteForSend() {
+    return punkte.map(p => ({
+      ...p,
+      text_oeffentlich: getEditedText(p, 'oeffentlich'),
+      text_intern: getEditedText(p, 'intern'),
+    }))
+  }
+
+  // ── PDF Export via Print ──
+  function exportPDF(type) {
+    const printContent = buildPrintHTML(type)
+    const w = window.open('', '_blank')
+    w.document.write(printContent)
+    w.document.close()
+    w.focus()
+    setTimeout(() => { w.print() }, 500)
+  }
+
+  // ── Word Export ──
+  function exportWord(type) {
+    const html = buildPrintHTML(type)
+    const blob = new Blob(['\ufeff' + html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Protokoll_${type}_${begehung.titel || 'Begehung'}.doc`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function buildPrintHTML(type) {
+    const isOeff = type === 'oeffentlich'
+    const color = isOeff ? '#cc1f1f' : '#991515'
+    const title = isOeff ? 'Baustellenprüfprotokoll' : 'Internes Protokoll'
+    const subtitle = isOeff ? 'Öffentliches Protokoll · Für Auftraggeber & Bauherr' : 'Vertraulich · Nur für interne Zwecke'
+
+    const items = punkte.map((p, i) => {
+      const text = getEditedText(p, type === 'oeffentlich' ? 'oeffentlich' : 'intern')
+      const noteCfg2 = NOTEN.find(n => n.n === p.note) || {}
+      const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
+      return \`<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:12px;page-break-inside:avoid;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="width:34px;height:34px;border-radius:50%;background:\${noteCfg2.bg};border:2px solid \${noteCfg2.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:\${noteCfg2.color};">\${p.note}</div>
+          <div>
+            <p style="font-weight:700;font-size:14px;margin:0 0 3px;">\${i+1}. \${p.titel}</p>
+            <span style="font-size:11px;background:\${noteCfg2.bg};color:\${noteCfg2.color};padding:2px 8px;border-radius:4px;font-weight:600;">\${p.status}</span>
+          </div>
+        </div>
+        \${fotos.map(f => \`<img src="\${f.url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-bottom:8px;" />\`).join('')}
+        \${!isOeff && p.rohtext ? \`<p style="font-size:11px;color:#6b7280;font-style:italic;margin:0 0 6px;">Rohnotiz: \${p.rohtext}</p>\` : ''}
+        <p style="font-size:13px;color:#374151;line-height:1.7;margin:0;">\${text || '–'}</p>
+      </div>\`
+    }).join('')
+
+    return \`<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #111; }
+      @media print { body { padding: 0; } @page { margin: 1.5cm; } }
+    </style></head><body>
+    <div style="background:\${color};padding:20px;border-radius:8px;margin-bottom:16px;">
+      <h1 style="color:#fff;font-size:20px;margin:0 0 4px;">\${title}</h1>
+      <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0;">\${subtitle} · \${begehung.datum || ''}</p>
+    </div>
+    <table style="width:100%;font-size:12px;margin-bottom:16px;border-collapse:collapse;">
+      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;width:140px;">Bauvorhaben</td><td style="font-weight:600;">\${begehung.titel}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Adresse</td><td style="font-weight:600;">\${begehung.adresse || '–'}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Auftraggeber</td><td style="font-weight:600;">\${begehung.auftraggeber_firma || begehung.auftraggeber_name || '–'}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Bauherr</td><td style="font-weight:600;">\${begehung.kunde_name || '–'}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Sachverständiger</td><td style="font-weight:600;">\${begehung.sachverstaendiger || '–'}</td></tr>
+    </table>
+    \${items}
+    <p style="font-size:10px;color:#9ca3af;text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;">Bauherrenhilfe · bauherrenhilfe.at</p>
+    </body></html>\`
+  }
 
   return (
     <div style={{ paddingBottom: 100 }}>
@@ -898,15 +1003,27 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         {/* Öffentliches Protokoll */}
         {viewMode === 'oeffentlich' && (
           <div>
+            {/* Export Buttons */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14 }}>
+              <button onClick={() => exportPDF('oeffentlich')}
+                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'10px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                📄 PDF Vorschau
+              </button>
+              <button onClick={() => exportWord('oeffentlich')}
+                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'10px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                📝 Word Export
+              </button>
+            </div>
+
             {/* Protokoll Header */}
-            <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:16 }}>
+            <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, paddingBottom:12, borderBottom:`0.5px solid ${G.border}` }}>
                 <div>
                   <p style={{ fontSize:16, fontWeight:800, color:G.accent, margin:'0 0 4px' }}>Baustellenprüfprotokoll</p>
                   <p style={{ fontSize:12, color:G.muted, margin:0 }}>Öffentlich · Für Auftraggeber & Bauherr</p>
                 </div>
                 <div style={{ textAlign:'right' }}>
-                  <p style={{ fontSize:11, color:G.muted, margin:'0 0 2px' }}>{formatDate(begehung.datum)}</p>
+                  <p style={{ fontSize:11, color:G.muted, margin:'0 0 4px' }}>{formatDate(begehung.datum)}</p>
                   {begehung.gesamtnote && <NoteCircle n={begehung.gesamtnote} size={32} />}
                 </div>
               </div>
@@ -925,22 +1042,43 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
               </div>
             </div>
 
-            {/* Prüfpunkte */}
-            {punkte.map((p, i) => (
-              <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
-                <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
-                  <NoteCircle n={p.note} size={34} />
-                  <div style={{ flex:1 }}>
-                    <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px' }}>{i+1}. {p.titel}</p>
-                    <span style={{ fontSize:11, padding:'2px 8px', borderRadius:6, background:NOTEN.find(n=>n.n===p.note)?.bg, color:NOTEN.find(n=>n.n===p.note)?.color, fontWeight:600 }}>{p.status}</span>
+            {/* Prüfpunkte mit Bearbeitung */}
+            {punkte.map((p, i) => {
+              const key = p.id + '_oeffentlich'
+              const isEditing = editMode[key]
+              const displayText = getEditedText(p, 'oeffentlich')
+              return (
+                <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
+                  <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
+                    <NoteCircle n={p.note} size={34} />
+                    <div style={{ flex:1 }}>
+                      <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px' }}>{i+1}. {p.titel}</p>
+                      <span style={{ fontSize:11, padding:'2px 8px', borderRadius:6, background:NOTEN.find(n=>n.n===p.note)?.bg, color:NOTEN.find(n=>n.n===p.note)?.color, fontWeight:600 }}>{p.status}</span>
+                    </div>
+                    <button onClick={() => toggleEdit(p, 'oeffentlich')}
+                      style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:7, padding:'5px 10px', fontSize:11, fontWeight:600, color:G.muted, cursor:'pointer', flexShrink:0 }}>
+                      {isEditing ? '✕ Abbrechen' : '✏️ Bearbeiten'}
+                    </button>
                   </div>
+                  {p.fotos?.filter(f=>f.url).slice(0,2).map((f, j) => (
+                    <img key={j} src={f.url} alt="" style={{ width:'100%', borderRadius:8, marginBottom:8, maxHeight:220, objectFit:'cover' }} />
+                  ))}
+                  {isEditing ? (
+                    <div>
+                      <textarea value={editTexts[key] ?? displayText}
+                        onChange={e => setEditTexts(t => ({ ...t, [key]: e.target.value }))}
+                        style={{ width:'100%', minHeight:100, fontSize:13, lineHeight:1.7, border:`1px solid ${G.accent}`, borderRadius:8, padding:'10px 12px', color:G.text, background:'#fff', resize:'vertical', outline:'none', boxSizing:'border-box' }} />
+                      <button onClick={() => saveEditedText(p, 'oeffentlich')}
+                        style={{ background:G.accent, color:'#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:700, cursor:'pointer', marginTop:6 }}>
+                        ✓ Speichern
+                      </button>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize:13, color:G.text, lineHeight:1.7, margin:0 }}>{displayText || '–'}</p>
+                  )}
                 </div>
-                {p.fotos?.filter(f=>f.url).slice(0,2).map((f, j) => (
-                  <img key={j} src={f.url} alt="" style={{ width:'100%', borderRadius:8, marginBottom:8, maxHeight:220, objectFit:'cover' }} />
-                ))}
-                <p style={{ fontSize:13, color:G.text, lineHeight:1.7, margin:0 }}>{p.text_oeffentlich || p.rohtext || '–'}</p>
-              </div>
-            ))}
+              )
+            })}
 
             {/* Versand Buttons */}
             <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:8 }}>
@@ -959,15 +1097,27 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         {/* Internes Protokoll */}
         {viewMode === 'intern' && (
           <div>
+            {/* Export Buttons */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:14 }}>
+              <button onClick={() => exportPDF('intern')}
+                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'10px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                📄 PDF Vorschau
+              </button>
+              <button onClick={() => exportWord('intern')}
+                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'10px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                📝 Word Export
+              </button>
+            </div>
+
             {/* Protokoll Header */}
-            <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:16 }}>
+            <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12, paddingBottom:12, borderBottom:`0.5px solid ${G.border}` }}>
                 <div>
                   <p style={{ fontSize:16, fontWeight:800, color:G.red, margin:'0 0 4px' }}>Internes Protokoll</p>
                   <p style={{ fontSize:12, color:G.muted, margin:0 }}>Vertraulich · Nur für interne Zwecke</p>
                 </div>
                 <div style={{ textAlign:'right' }}>
-                  <p style={{ fontSize:11, color:G.muted, margin:'0 0 2px' }}>{formatDate(begehung.datum)}</p>
+                  <p style={{ fontSize:11, color:G.muted, margin:'0 0 4px' }}>{formatDate(begehung.datum)}</p>
                   {begehung.gesamtnote && <NoteCircle n={begehung.gesamtnote} size={32} />}
                 </div>
               </div>
@@ -985,28 +1135,59 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
                 ))}
               </div>
             </div>
-            {punkte.map((p, i) => (
-              <div key={p.id} style={{ ...card({ marginBottom:12, borderColor: p.note >= 4 ? G.red + '44' : G.border }) }}>
-                <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
-                  <NoteCircle n={p.note} size={32} />
-                  <div>
-                    <p style={{ fontWeight:700, fontSize:14 }}>{i+1}. {p.titel}</p>
-                    <p style={{ fontSize:11, color: p.note >= 4 ? G.red : G.muted }}>{p.status}</p>
+
+            {/* Prüfpunkte mit Bearbeitung */}
+            {punkte.map((p, i) => {
+              const key = p.id + '_intern'
+              const isEditing = editMode[key]
+              const displayText = getEditedText(p, 'intern')
+              return (
+                <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${p.note >= 4 ? '#fca5a5' : G.border}`, borderRadius:12, padding:14, marginBottom:10, ...(p.note >= 4 ? { background:'#fff5f5' } : {}) }}>
+                  <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
+                    <NoteCircle n={p.note} size={34} />
+                    <div style={{ flex:1 }}>
+                      <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px' }}>{i+1}. {p.titel}</p>
+                      <span style={{ fontSize:11, padding:'2px 8px', borderRadius:6, background:NOTEN.find(n=>n.n===p.note)?.bg, color:NOTEN.find(n=>n.n===p.note)?.color, fontWeight:600 }}>{p.status}</span>
+                    </div>
+                    <button onClick={() => toggleEdit(p, 'intern')}
+                      style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:7, padding:'5px 10px', fontSize:11, fontWeight:600, color:G.muted, cursor:'pointer', flexShrink:0 }}>
+                      {isEditing ? '✕ Abbrechen' : '✏️ Bearbeiten'}
+                    </button>
                   </div>
+                  {p.fotos?.filter(f=>f.url).map((f, j) => (
+                    <img key={j} src={f.url} alt="" style={{ width:'100%', borderRadius:8, marginBottom:8, maxHeight:200, objectFit:'cover' }} />
+                  ))}
+                  {p.rohtext && <p style={{ fontSize:11, color:G.muted, fontStyle:'italic', margin:'0 0 6px' }}>Rohnotiz: {p.rohtext}</p>}
+                  {isEditing ? (
+                    <div>
+                      <textarea value={editTexts[key] ?? displayText}
+                        onChange={e => setEditTexts(t => ({ ...t, [key]: e.target.value }))}
+                        style={{ width:'100%', minHeight:100, fontSize:13, lineHeight:1.7, border:`1px solid ${G.red}`, borderRadius:8, padding:'10px 12px', color:G.text, background:'#fff', resize:'vertical', outline:'none', boxSizing:'border-box' }} />
+                      <button onClick={() => saveEditedText(p, 'intern')}
+                        style={{ background:G.red, color:'#fff', border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:700, cursor:'pointer', marginTop:6 }}>
+                        ✓ Speichern
+                      </button>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize:13, color:G.text, lineHeight:1.7, margin:0 }}>{displayText || '–'}</p>
+                  )}
+                  {p.fotos?.[0]?.analyse && !isEditing && (
+                    <div style={{ marginTop:8, padding:'8px 12px', background:'rgba(245,158,11,0.08)', borderRadius:8, borderLeft:`3px solid ${G.accent}` }}>
+                      <p style={{ fontSize:10, color:G.accent, fontWeight:700, margin:'0 0 2px' }}>KI-Bildanalyse</p>
+                      <p style={{ fontSize:11, color:G.muted, margin:0 }}>{p.fotos[0].analyse}</p>
+                    </div>
+                  )}
                 </div>
-                {p.fotos?.map((f, j) => (
-                  <img key={j} src={f.url} alt="" style={{ width:'100%', borderRadius:10, marginBottom:8, maxHeight:200, objectFit:'cover' }} />
-                ))}
-                {p.rohtext && <p style={{ fontSize:11, color:G.muted, fontStyle:'italic', marginBottom:6 }}>Rohnotiz: {p.rohtext}</p>}
-                <p style={{ fontSize:13, color:G.text, lineHeight:1.7 }}>{p.text_intern || p.rohtext || '–'}</p>
-                {p.fotos?.[0]?.analyse && (
-                  <div style={{ marginTop:8, padding:'8px 12px', background:'rgba(245,158,11,0.08)', borderRadius:8, borderLeft:`3px solid ${G.accent}` }}>
-                    <p style={{ fontSize:10, color:G.accent, fontWeight:700, marginBottom:2 }}>KI-Bildanalyse</p>
-                    <p style={{ fontSize:11, color:G.muted }}>{p.fotos[0].analyse}</p>
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
+
+            {/* Versand Button */}
+            <div style={{ marginTop:16 }}>
+              <button onClick={() => sendProtocol('ag_beide')} disabled={!!sending}
+                style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
+                {sending === 'ag_beide' ? <span className="spinner"/> : '📧'} Beide Protokolle an AG senden
+              </button>
+            </div>
           </div>
         )}
       </div>
