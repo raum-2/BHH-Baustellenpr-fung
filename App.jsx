@@ -273,7 +273,7 @@ function BottomNav({ page, setPage, isAdmin }) {
 }
 
 // ─── Dashboard ───────────────────────────────────────────────
-function Dashboard({ user, profile, setPage, stats, setSelectedBegehung }) {
+function Dashboard({ user, profile, setPage, stats, setSelectedBegehung, isSuperAdmin, role }) {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'
 
@@ -1363,11 +1363,12 @@ function App() {
   }, [])
 
   async function loadData(u) {
-    const [bRes, prjRes, fotoRes] = await Promise.all([
+    const [bRes, prjRes, profileRes] = await Promise.all([
       sb.from('begehungen').select('*').eq('user_id', u.id).order('created_at', { ascending:false }),
       sb.from('projekte').select('count', { count:'exact', head:true }),
-      sb.from('pruefpunkte').select('id, note, fotos').eq('begehung_id', sb.from('begehungen').select('id').eq('user_id', u.id)),
+      sb.from('profiles').select('*').eq('id', u.id).single(),
     ])
+    if (profileRes.data) setProfile(profileRes.data)
     const bList = bRes.data || []
     setBegehungen(bList)
 
@@ -1389,7 +1390,9 @@ function App() {
     })
   }
 
-  const isAdmin = user?.user_metadata?.role === 'admin' || user?.user_metadata?.role === 'superadmin'
+  const role = profile?.role || user?.user_metadata?.role || ''
+  const isAdmin = role === 'admin' || role === 'superadmin'
+  const isSuperAdmin = role === 'superadmin'
 
   if (loading) return (
     <div style={{ height:'100dvh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f8f8f8' }}>
@@ -1409,13 +1412,13 @@ function App() {
 
   function renderPage() {
     switch (page) {
-      case 'dashboard':      return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} />
+      case 'dashboard':      return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
       case 'begehungen':     return <BegehungenListe setPage={setPage} setSelectedBegehung={setSelectedBegehung} begehungen={begehungen} loading={false} onDelete={id => setBegehungen(prev => prev.filter(b => b.id !== id))} />
       case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} />
       case 'admin':          return <AdminPanel />
-      default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} />
+      default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }
   }
 
