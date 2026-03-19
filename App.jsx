@@ -875,19 +875,13 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
               <div style={{ marginTop:20, display:'flex', flexDirection:'column', gap:10 }}>
                 <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', margin:'4px 0 2px' }}>Protokoll versenden</p>
                 <button onClick={() => sendProtocol('ag_beide')} disabled={!!sending}
-                  style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
+                  style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
                   {sending === 'ag_beide' ? <span className="spinner"/> : '📧'} Beide Protokolle an AG
                 </button>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                  <button onClick={() => sendProtocol('ag_oeffentlich')} disabled={!!sending}
-                    style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'11px 12px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
-                    {sending === 'ag_oeffentlich' ? <span className="spinner"/> : '📄'} Öffentl. an AG
-                  </button>
-                  <button onClick={() => sendProtocol('bauherr')} disabled={!!sending}
-                    style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'11px 12px', display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
-                    {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} Öffentl. an Bauherr
-                  </button>
-                </div>
+                <button onClick={() => sendProtocol('bauherr')} disabled={!!sending}
+                  style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
+                  {sending === 'bauherr' ? <span className="spinner"/> : '🏠'} Öffentliches Protokoll an Bauherr
+                </button>
                 {begehung.status === 'versendet' && (
                   <button style={{ background:G.green, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', fontSize:13, fontWeight:700, cursor:'pointer', width:'100%', marginTop:4 }} onClick={finalize}>
                     ✓ Als abgeschlossen markieren
