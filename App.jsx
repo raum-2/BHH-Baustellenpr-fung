@@ -176,6 +176,66 @@ async function uploadFoto(base64, name) {
   return data?.publicUrl || null
 }
 
+
+// ─── Onboarding Modal ────────────────────────────────────────
+function OnboardingModal({ user, onComplete }) {
+  const [form, setForm] = useState({
+    full_name: user?.user_metadata?.full_name || '',
+    firma: '',
+    uid_nummer: '',
+    telefon: '',
+    firma_adresse: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.firma.trim()) { toast.error('Firmenname ist Pflicht'); return }
+    setSaving(true)
+    const { error } = await sb.from('profiles').upsert({
+      id: user.id,
+      full_name: form.full_name,
+      firma: form.firma,
+      uid_nummer: form.uid_nummer,
+      telefon: form.telefon,
+      firma_adresse: form.firma_adresse,
+      onboarding_complete: true,
+      role: user?.user_metadata?.role || 'gutachter',
+    })
+    if (error) { toast.error(error.message); setSaving(false); return }
+    toast.success('Firmendaten gespeichert!')
+    onComplete({ ...form, onboarding_complete: true })
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:20 }}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:460, maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ background:G.accent, padding:'20px 20px 16px', borderRadius:'16px 16px 0 0' }}>
+          <p style={{ color:'rgba(255,255,255,0.75)', fontSize:12, margin:'0 0 4px' }}>Willkommen bei</p>
+          <p style={{ color:'#fff', fontSize:18, fontWeight:800, margin:0 }}>Bauherrenhilfe</p>
+          <p style={{ color:'rgba(255,255,255,0.7)', fontSize:12, margin:'6px 0 0' }}>Bitte vervollständige dein Firmenprofil um fortzufahren.</p>
+        </div>
+        <div style={{ padding:20 }}>
+          <label style={lbl}>Vollständiger Name *</label>
+          <input style={inp} value={form.full_name} onChange={e => upd('full_name', e.target.value)} placeholder="Vor- und Nachname" />
+          <label style={lbl}>Firmenname *</label>
+          <input style={inp} value={form.firma} onChange={e => upd('firma', e.target.value)} placeholder="Musterbau GmbH" autoFocus />
+          <label style={lbl}>UID-Nummer</label>
+          <input style={inp} value={form.uid_nummer} onChange={e => upd('uid_nummer', e.target.value)} placeholder="ATU12345678" />
+          <label style={lbl}>Telefon</label>
+          <input style={inp} value={form.telefon} onChange={e => upd('telefon', e.target.value)} placeholder="+43 123 456 789" />
+          <label style={lbl}>Firmenadresse</label>
+          <input style={inp} value={form.firma_adresse} onChange={e => upd('firma_adresse', e.target.value)} placeholder="Musterstraße 1, 8010 Graz" />
+          <button onClick={handleSave} disabled={saving}
+            style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px 20px', width:'100%', fontSize:14, fontWeight:700, cursor:'pointer', marginTop:20, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {saving ? <span className="spinner"/> : null} Profil speichern & starten
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Auth ────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [mode, setMode] = useState('login')
@@ -1281,58 +1341,183 @@ function Projekte({ setPage }) {
 
 // ─── Admin Panel ─────────────────────────────────────────────
 function AdminPanel() {
-  const [stats, setStats] = useState({ begehungen:0, user:0, maengel:0 })
+  const now = new Date()
+  const [selMonth, setSelMonth] = useState(now.getMonth())
+  const [selYear, setSelYear]   = useState(now.getFullYear())
+  const [profiles, setProfiles] = useState([])
   const [begehungen, setBegehungen] = useState([])
   const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+
+  const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+  const YEARS = [2025, 2026, 2027]
 
   useEffect(() => {
     async function load() {
-      const [bRes, uRes] = await Promise.all([
-        sb.from('begehungen').select('*, pruefpunkte(note)').order('created_at', { ascending:false }).limit(20),
-        sb.from('profiles').select('count', { count:'exact', head:true }),
+      const [bRes, pRes] = await Promise.all([
+        sb.from('begehungen').select('id, titel, user_id, datum, status, auftraggeber_firma, auftraggeber_name').order('datum', { ascending:false }),
+        sb.from('profiles').select('id, full_name, firma, uid_nummer, firma_adresse, telefon, email:id'),
       ])
-      const allBegehungen = bRes.data || []
-      const maengel = allBegehungen.reduce((s, b) => s + (b.pruefpunkte || []).filter(p => p.note >= 4).length, 0)
-      setBegehungen(allBegehungen)
-      setStats({ begehungen: allBegehungen.length, user: uRes.count || 0, maengel })
+      setBegehungen(bRes.data || [])
+      setProfiles(pRes.data || [])
       setLoading(false)
     }
     load()
   }, [])
 
+  // Begehungen für gewählten Monat/Jahr filtern
+  const filtered = begehungen.filter(b => {
+    if (!b.datum) return false
+    const d = new Date(b.datum)
+    return d.getMonth() === selMonth && d.getFullYear() === selYear
+  })
+
+  // Pro User gruppieren
+  const byUser = {}
+  for (const b of filtered) {
+    if (!byUser[b.user_id]) byUser[b.user_id] = []
+    byUser[b.user_id].push(b)
+  }
+
+  // Profile-Map
+  const profileMap = {}
+  for (const p of profiles) profileMap[p.id] = p
+
+  const rows = Object.entries(byUser).map(([uid, list]) => ({
+    profile: profileMap[uid] || { full_name: 'Unbekannt', firma: '–' },
+    count: list.length,
+    begehungen: list,
+  })).sort((a, b) => b.count - a.count)
+
+  function exportAbrechnungWord() {
+    const monat = MONTHS[selMonth] + ' ' + selYear
+    const rowsHtml = rows.map((r, i) =>
+      '<tr style="border-bottom:1px solid #e5e7eb;">'
+      + '<td style="padding:10px 12px;font-weight:600;">' + (i+1) + '.</td>'
+      + '<td style="padding:10px 12px;">' + (r.profile.firma || '–') + '</td>'
+      + '<td style="padding:10px 12px;">' + (r.profile.full_name || '–') + '</td>'
+      + '<td style="padding:10px 12px;">' + (r.profile.uid_nummer || '–') + '</td>'
+      + '<td style="padding:10px 12px;font-weight:700;color:#cc1f1f;text-align:center;">' + r.count + '</td>'
+      + '</tr>'
+    ).join('')
+    const html = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+      + '<style>body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:20px;}'
+      + 'table{width:100%;border-collapse:collapse;}th{background:#cc1f1f;color:#fff;padding:10px 12px;text-align:left;font-size:12px;}'
+      + '</style></head><body>'
+      + '<h1 style="color:#cc1f1f;font-size:22px;margin:0 0 4px;">Abrechnungsliste</h1>'
+      + '<p style="color:#6b7280;font-size:13px;margin:0 0 20px;">' + monat + ' · Bauherrenhilfe</p>'
+      + '<table><thead><tr><th>#</th><th>Firma</th><th>Name</th><th>UID</th><th style="text-align:center;">Begehungen</th></tr></thead>'
+      + '<tbody>' + rowsHtml + '</tbody>'
+      + '<tfoot><tr><td colspan="4" style="padding:12px;font-weight:700;">Gesamt</td><td style="padding:12px;font-weight:800;color:#cc1f1f;text-align:center;">' + filtered.length + '</td></tr></tfoot>'
+      + '</table>'
+      + '<p style="font-size:10px;color:#9ca3af;margin-top:20px;">Erstellt: ' + new Date().toLocaleDateString('de-AT') + ' · Bauherrenhilfe</p>'
+      + '</body></html>'
+    const blob = new Blob(['﻿' + html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'Abrechnung_' + MONTHS[selMonth] + '_' + selYear + '.doc'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function sendMonthlyReport() {
+    setSending(true)
+    try {
+      const monat = MONTHS[selMonth] + ' ' + selYear
+      await fetch('/api/monthly-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: rows.map(r => ({ firma: r.profile.firma, name: r.profile.full_name, uid: r.profile.uid_nummer, count: r.count })), monat, total: filtered.length }),
+      })
+      toast.success('Abrechnungsliste per E-Mail versendet!')
+    } catch { toast.error('Versand fehlgeschlagen') }
+    setSending(false)
+  }
+
   if (loading) return <div style={{ padding:60, textAlign:'center', color:G.muted }}>Lädt…</div>
 
   return (
-    <div style={{ padding:20, paddingBottom:100 }}>
-      <h1 style={{ fontSize:22, fontWeight:800, marginBottom:20 }}>⚙️ Admin</h1>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:20 }}>
-        {[
-          { label:'Begehungen', value:stats.begehungen, color:G.blue },
-          { label:'Nutzer', value:stats.user, color:G.green },
-          { label:'Mängel', value:stats.maengel, color:G.red },
-        ].map(s => (
-          <div key={s.label} style={{ ...card({ padding:14, textAlign:'center' }) }}>
-            <p style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.value}</p>
-            <p style={{ fontSize:10, color:G.muted, fontWeight:600, textTransform:'uppercase' }}>{s.label}</p>
-          </div>
-        ))}
+    <div style={{ paddingBottom:100 }}>
+      <div style={{ background:G.accent, padding:'16px 20px' }}>
+        <p style={{ color:'rgba(255,255,255,0.7)', fontSize:11, margin:'0 0 2px' }}>Superadmin</p>
+        <p style={{ color:'#fff', fontSize:17, fontWeight:800, margin:0 }}>Abrechnung</p>
       </div>
 
-      <div style={card()}>
-        <p style={{ fontWeight:700, marginBottom:14 }}>Alle Begehungen</p>
-        {begehungen.map(b => (
-          <div key={b.id} style={{ display:'flex', gap:12, alignItems:'center', paddingBottom:10, borderBottom:`1px solid ${G.border}`, marginBottom:10 }}>
-            <NoteCircle n={b.gesamtnote} size={32} />
-            <div style={{ flex:1 }}>
-              <p style={{ fontSize:13, fontWeight:600 }}>{b.titel}</p>
-              <p style={{ fontSize:11, color:G.muted }}>{b.auftraggeber_firma || b.auftraggeber_name} · {formatDate(b.datum)}</p>
-            </div>
-            <span style={{ fontSize:11, padding:'3px 8px', borderRadius:6, background: BEGEHUNG_STATUS[b.status]?.bg || '#dbeafe', color: BEGEHUNG_STATUS[b.status]?.color || G.blue, fontWeight:600 }}>
-              {BEGEHUNG_STATUS[b.status]?.label || 'Erstellt'}
-            </span>
+      <div style={{ padding:20 }}>
+        {/* Monat/Jahr Auswahl */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+          <div>
+            <label style={lbl}>Monat</label>
+            <select style={inp} value={selMonth} onChange={e => setSelMonth(+e.target.value)}>
+              {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
           </div>
-        ))}
+          <div>
+            <label style={lbl}>Jahr</label>
+            <select style={inp} value={selYear} onChange={e => setSelYear(+e.target.value)}>
+              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Summary Card */}
+        <div style={{ background:G.accentLight, border:`0.5px solid ${G.accentBorder}`, borderRadius:12, padding:16, marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <p style={{ fontSize:12, color:G.muted, margin:'0 0 2px' }}>{MONTHS[selMonth]} {selYear}</p>
+            <p style={{ fontSize:26, fontWeight:800, color:G.accent, margin:0 }}>{filtered.length}</p>
+            <p style={{ fontSize:11, color:G.muted, margin:0 }}>Begehungen · {rows.length} Firmen</p>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <button onClick={exportAbrechnungWord}
+              style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'9px 14px', fontSize:12, fontWeight:600, color:G.text, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+              📝 Word Export
+            </button>
+            <button onClick={sendMonthlyReport} disabled={sending}
+              style={{ background:G.accent, border:'none', borderRadius:9, padding:'9px 14px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+              {sending ? <span className="spinner"/> : '📧'} Per E-Mail senden
+            </button>
+          </div>
+        </div>
+
+        {/* Firmen-Tabelle */}
+        {rows.length === 0 ? (
+          <div style={{ textAlign:'center', padding:40 }}>
+            <p style={{ fontSize:32, marginBottom:8 }}>📋</p>
+            <p style={{ color:G.muted, fontSize:13 }}>Keine Begehungen in diesem Monat</p>
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {rows.map((r, i) => (
+              <div key={i} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                  <div style={{ width:36, height:36, borderRadius:9, background:G.accentLight, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:15, color:G.accent, flexShrink:0 }}>
+                    {r.count}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.profile.firma || '–'}</p>
+                    <p style={{ fontSize:11, color:G.muted, margin:0 }}>{r.profile.full_name} {r.profile.uid_nummer ? '· ' + r.profile.uid_nummer : ''}</p>
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:700, color:G.accent, background:G.accentLight, borderRadius:6, padding:'3px 9px', flexShrink:0 }}>
+                    {r.count} Beg.
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Alle Nutzer */}
+        <div style={{ marginTop:24 }}>
+          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', marginBottom:10 }}>Alle registrierten Firmen</p>
+          {profiles.map(p => (
+            <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:10, padding:12, marginBottom:8 }}>
+              <p style={{ fontWeight:600, fontSize:13, margin:'0 0 2px' }}>{p.firma || '–'}</p>
+              <p style={{ fontSize:11, color:G.muted, margin:0 }}>{p.full_name} {p.uid_nummer ? '· ' + p.uid_nummer : ''} {p.telefon ? '· ' + p.telefon : ''}</p>
+              {p.firma_adresse && <p style={{ fontSize:11, color:G.muted, margin:'2px 0 0' }}>{p.firma_adresse}</p>}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -1347,6 +1532,7 @@ function App() {
   const [begehungen, setBegehungen]   = useState([])
   const [selectedBegehung, setSelectedBegehung] = useState(null)
   const [stats, setStats]             = useState({})
+  const [showOnboarding, setShowOnboarding] = useState(false)
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -1367,7 +1553,12 @@ function App() {
       sb.from('projekte').select('count', { count:'exact', head:true }),
       sb.from('profiles').select('*').eq('id', u.id).single(),
     ])
-    if (profileRes.data) setProfile(profileRes.data)
+    if (profileRes.data) {
+      setProfile(profileRes.data)
+      if (!profileRes.data.onboarding_complete) setShowOnboarding(true)
+    } else {
+      setShowOnboarding(true)
+    }
     const bList = bRes.data || []
     setBegehungen(bList)
 
@@ -1427,6 +1618,12 @@ function App() {
       {renderPage()}
       {page !== 'neueBegehung' && page !== 'begehungDetail' && (
         <BottomNav page={page} setPage={setPage} isAdmin={isAdmin} />
+      )}
+      {showOnboarding && user && (
+        <OnboardingModal user={user} onComplete={data => {
+          setProfile(p => ({ ...p, ...data }))
+          setShowOnboarding(false)
+        }} />
       )}
     </div>
   )
