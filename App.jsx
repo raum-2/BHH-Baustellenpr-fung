@@ -1434,21 +1434,22 @@ function AdminPanel() {
     return d.getMonth() === selMonth && d.getFullYear() === selYear
   })
 
-  // Pro User gruppieren
-  const byUser = {}
-  for (const b of filtered) {
-    if (!byUser[b.user_id]) byUser[b.user_id] = []
-    byUser[b.user_id].push(b)
-  }
-
   // Profile-Map
   const profileMap = {}
   for (const p of profiles) profileMap[p.id] = p
 
-  const rows = Object.entries(byUser).map(([uid, list]) => ({
-    profile: profileMap[uid] || { full_name: 'Unbekannt', firma: '–' },
-    count: list.length,
-    begehungen: list,
+  // Immer nach auftraggeber_firma gruppieren
+  const byFirma = {}
+  for (const b of filtered) {
+    const key = b.auftraggeber_firma || profileMap[b.user_id]?.firma || '–'
+    if (!byFirma[key]) byFirma[key] = { firma: key, user_id: b.user_id, list: [] }
+    byFirma[key].list.push(b)
+  }
+
+  const rows = Object.values(byFirma).map(entry => ({
+    profile: profileMap[entry.user_id] || { full_name: '', firma: entry.firma },
+    firma: entry.firma,
+    count: entry.list.length,
   })).sort((a, b) => b.count - a.count)
 
   function exportAbrechnungWord() {
