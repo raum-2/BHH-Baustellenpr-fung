@@ -193,7 +193,7 @@ function LoginScreen({ onLogin }) {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
           <img src="/logo.png" alt="BHH Logo" style={{ width: 140, height: 'auto', margin: '0 auto 16px', display: 'block' }} />
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#1a1a1a', marginBottom: 4 }}>Bauherren Hilfe</h1>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#1a1a1a', marginBottom: 4 }}>Bauherrenhilfe</h1>
           <p style={{ color: '#6b7280', fontSize: 13 }}>Professionelle Baustellenprüfung</p>
         </div>
 
@@ -258,7 +258,7 @@ function BottomNav({ page, setPage, isAdmin }) {
 }
 
 // ─── Dashboard ───────────────────────────────────────────────
-function Dashboard({ user, profile, setPage, stats }) {
+function Dashboard({ user, profile, setPage, stats, setSelectedBegehung }) {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'
 
@@ -267,7 +267,7 @@ function Dashboard({ user, profile, setPage, stats }) {
       <div style={{ marginBottom: 28 }}>
         <p style={{ color: G.muted, fontSize: 13, marginBottom: 3 }}>{greeting},</p>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: G.text }}>{profile?.full_name || user?.email}</h1>
-        <p style={{ color: G.muted, fontSize: 12, marginTop: 3 }}>Sachverständiger · Bauherren Hilfe</p>
+        <p style={{ color: G.muted, fontSize: 12, marginTop: 3 }}>Sachverständiger · Bauherrenhilfe</p>
       </div>
 
       {/* Quick Action */}
@@ -301,11 +301,12 @@ function Dashboard({ user, profile, setPage, stats }) {
         <div style={card()}>
           <p style={{ fontWeight:700, marginBottom:14, fontSize:14 }}>Letzte Begehungen</p>
           {stats.letzte.map(b => (
-            <div key={b.id} style={{ display:'flex', alignItems:'center', gap:12, paddingBottom:12, borderBottom:`1px solid ${G.border}`, marginBottom:12 }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:'rgba(245,158,11,0.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>📋</div>
+            <div key={b.id} onClick={() => { setSelectedBegehung(b); setPage('begehungDetail') }}
+              style={{ display:'flex', alignItems:'center', gap:12, paddingBottom:12, borderBottom:`1px solid ${G.border}`, marginBottom:12, cursor:'pointer' }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:G.accentLight, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>📋</div>
               <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontWeight:600, fontSize:13, marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.titel}</p>
-                <p style={{ fontSize:11, color:G.muted }}>{b.gewerk} · {formatDate(b.datum)}</p>
+                <p style={{ fontWeight:600, fontSize:13, margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.titel}</p>
+                <p style={{ fontSize:11, color:G.muted, margin:0 }}>{b.gewerk} · {formatDate(b.datum)}</p>
               </div>
               <NoteCircle n={b.gesamtnote} size={28} />
             </div>
@@ -1125,13 +1126,13 @@ function App() {
 
   function renderPage() {
     switch (page) {
-      case 'dashboard':      return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} />
+      case 'dashboard':      return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} />
       case 'begehungen':     return <BegehungenListe setPage={setPage} setSelectedBegehung={setSelectedBegehung} begehungen={begehungen} loading={false} onDelete={id => setBegehungen(prev => prev.filter(b => b.id !== id))} />
       case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} />
       case 'admin':          return <AdminPanel />
-      default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} />
+      default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} />
     }
   }
 
