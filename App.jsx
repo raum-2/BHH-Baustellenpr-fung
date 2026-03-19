@@ -858,39 +858,38 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       const text = getEditedText(p, type === 'oeffentlich' ? 'oeffentlich' : 'intern')
       const noteCfg2 = NOTEN.find(n => n.n === p.note) || {}
       const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
-      return `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:12px;page-break-inside:avoid;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="width:34px;height:34px;border-radius:50%;background:\${noteCfg2.bg};border:2px solid \${noteCfg2.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:\${noteCfg2.color};">\${p.note}</div>
-          <div>
-            <p style="font-weight:700;font-size:14px;margin:0 0 3px;">\${i+1}. \${p.titel}</p>
-            <span style="font-size:11px;background:\${noteCfg2.bg};color:\${noteCfg2.color};padding:2px 8px;border-radius:4px;font-weight:600;">\${p.status}</span>
-          </div>
-        </div>
-        \${fotos.map(f => `<img src="\${f.url}" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-bottom:8px;" />`).join('')}
-        \${!isOeff && p.rohtext ? `<p style="font-size:11px;color:#6b7280;font-style:italic;margin:0 0 6px;">Rohnotiz: \${p.rohtext}</p>` : ''}
-        <p style="font-size:13px;color:#374151;line-height:1.7;margin:0;">\${text || '–'}</p>
-      </div>`
+      const fotosHtml = fotos.map(f => '<img src="' + f.url + '" style="width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-bottom:8px;" />').join('')
+      const rohHtml = (!isOeff && p.rohtext) ? '<p style="font-size:11px;color:#6b7280;font-style:italic;margin:0 0 6px;">Rohnotiz: ' + p.rohtext + '</p>' : ''
+      return '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:12px;page-break-inside:avoid;">'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+        + '<div style="width:34px;height:34px;border-radius:50%;background:' + noteCfg2.bg + ';border:2px solid ' + noteCfg2.color + ';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:' + noteCfg2.color + ';">' + p.note + '</div>'
+        + '<div>'
+        + '<p style="font-weight:700;font-size:14px;margin:0 0 3px;">' + (i+1) + '. ' + p.titel + '</p>'
+        + '<span style="font-size:11px;background:' + noteCfg2.bg + ';color:' + noteCfg2.color + ';padding:2px 8px;border-radius:4px;font-weight:600;">' + p.status + '</span>'
+        + '</div></div>'
+        + fotosHtml
+        + rohHtml
+        + '<p style="font-size:13px;color:#374151;line-height:1.7;margin:0;">' + (text || '–') + '</p>'
+        + '</div>'
     }).join('')
 
-    return `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <style>
-      body { font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; padding: 20px; color: #111; }
-      @media print { body { padding: 0; } @page { margin: 1.5cm; } }
-    </style></head><body>
-    <div style="background:\${color};padding:20px;border-radius:8px;margin-bottom:16px;">
-      <h1 style="color:#fff;font-size:20px;margin:0 0 4px;">\${title}</h1>
-      <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0;">\${subtitle} · \${begehung.datum || ''}</p>
-    </div>
-    <table style="width:100%;font-size:12px;margin-bottom:16px;border-collapse:collapse;">
-      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;width:140px;">Bauvorhaben</td><td style="font-weight:600;">\${begehung.titel}</td></tr>
-      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Adresse</td><td style="font-weight:600;">\${begehung.adresse || '–'}</td></tr>
-      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Auftraggeber</td><td style="font-weight:600;">\${begehung.auftraggeber_firma || begehung.auftraggeber_name || '–'}</td></tr>
-      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Bauherr</td><td style="font-weight:600;">\${begehung.kunde_name || '–'}</td></tr>
-      <tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Sachverständiger</td><td style="font-weight:600;">\${begehung.sachverstaendiger || '–'}</td></tr>
-    </table>
-    \${items}
-    <p style="font-size:10px;color:#9ca3af;text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;">Bauherrenhilfe · bauherrenhilfe.at</p>
-    </body></html>`
+    return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+      + '<style>body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px;color:#111;}'
+      + '@media print{body{padding:0;}@page{margin:1.5cm;}}</style></head><body>'
+      + '<div style="background:' + color + ';padding:20px;border-radius:8px;margin-bottom:16px;">'
+      + '<h1 style="color:#fff;font-size:20px;margin:0 0 4px;">' + title + '</h1>'
+      + '<p style="color:rgba(255,255,255,0.85);font-size:12px;margin:0;">' + subtitle + ' · ' + (begehung.datum || '') + '</p>'
+      + '</div>'
+      + '<table style="width:100%;font-size:12px;margin-bottom:16px;border-collapse:collapse;">'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;width:140px;">Bauvorhaben</td><td style="font-weight:600;">' + (begehung.titel || '') + '</td></tr>'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Adresse</td><td style="font-weight:600;">' + (begehung.adresse || '–') + '</td></tr>'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Auftraggeber</td><td style="font-weight:600;">' + (begehung.auftraggeber_firma || begehung.auftraggeber_name || '–') + '</td></tr>'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Bauherr</td><td style="font-weight:600;">' + (begehung.kunde_name || '–') + '</td></tr>'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Sachverständiger</td><td style="font-weight:600;">' + (begehung.sachverstaendiger || '–') + '</td></tr>'
+      + '</table>'
+      + items
+      + '<p style="font-size:10px;color:#9ca3af;text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid #e5e7eb;">Bauherrenhilfe · bauherrenhilfe.at</p>'
+      + '</body></html>'
   }
 
   return (
