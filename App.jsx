@@ -307,13 +307,23 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
     for (const foto of fotos) {
       if (!foto.url) continue
-      checkY(55)
       const b64 = await imgToBase64(foto.url)
       if (b64) {
         try {
-          const imgW = Math.min(cW, 120)
-          doc.addImage(b64, 'JPEG', ml, y, imgW, 50)
-          y += 54
+          // Get natural dimensions to preserve aspect ratio
+          const imgEl = await new Promise(res => {
+            const i = new Image()
+            i.onload = () => res(i)
+            i.onerror = () => res(null)
+            i.src = b64
+          })
+          if (!imgEl) continue
+          const aspect = imgEl.naturalHeight / imgEl.naturalWidth
+          const imgW = cW
+          const imgH = Math.min(imgW * aspect, 100) // max 100mm height
+          checkY(imgH + 6)
+          doc.addImage(b64, 'JPEG', ml, y, imgW, imgH)
+          y += imgH + 5
         } catch(e) { /* skip broken image */ }
       }
     }
@@ -1195,29 +1205,42 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
     }
     setSending(recipient)
     try {
+      toast.loading('PDFs werden erstellt…', { id: 'pdf-send' })
+      let linkOeff = null, linkIntern = null
+
+      // PDF generieren + in Supabase hochladen für Download-Link
+      async function uploadPDF(type) {
+        const d = await generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl: null, creatorName: begehung.sachverstaendiger })
+        const blob = d.output('blob')
+        const path = 'protokolle/' + begehung.id + '_' + type + '_' + Date.now() + '.pdf'
+        await sb.storage.from('bhh-photos').upload(path, blob, { contentType: 'application/pdf', upsert: true })
+        const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
+        // Also trigger local download
+        d.save('Protokoll_' + (type === 'oeffentlich' ? 'Oeffentlich' : 'Intern') + '_' + (begehung.titel||'').replace(/[^a-zA-Z0-9]/g,'_') + '.pdf')
+        return data?.publicUrl || null
+      }
+
+      if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich' || recipient === 'bauherr') {
+        linkOeff = await uploadPDF('oeffentlich')
+      }
+      if (recipient === 'ag_beide') {
+        linkIntern = await uploadPDF('intern')
+      }
+
       toast.loading('E-Mail wird gesendet…', { id: 'pdf-send' })
       const res = await fetch('/api/send-protocol', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ begehung, punkte: getPunkteForSend(), recipient }),
+        body: JSON.stringify({ begehung, punkte: getPunkteForSend(), recipient, linkOeff, linkIntern }),
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
         throw new Error(errData.error || 'Versand fehlgeschlagen')
       }
       toast.dismiss('pdf-send')
-      // PDF lokal generieren und auto-download
-      if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich') {
-        const d = await generateProtokollPDF({ type: 'oeffentlich', begehung, punkte, getEditedText, stempelUrl: null, creatorName: begehung.sachverstaendiger })
-        d.save('Protokoll_Oeffentlich_' + (begehung.titel||'').replace(/[^a-zA-Z0-9]/g,'_') + '.pdf')
-      }
-      if (recipient === 'ag_beide') {
-        const d2 = await generateProtokollPDF({ type: 'intern', begehung, punkte, getEditedText, stempelUrl: null, creatorName: begehung.sachverstaendiger })
-        d2.save('Protokoll_Intern_' + (begehung.titel||'').replace(/[^a-zA-Z0-9]/g,'_') + '.pdf')
-      }
-      if (recipient === 'ag_beide') toast.success('E-Mail gesendet + PDFs heruntergeladen!')
-      else if (recipient === 'ag_oeffentlich') toast.success('E-Mail gesendet + PDF heruntergeladen!')
-      else toast.success('Öffentliches Protokoll an Bauherr versendet!')
+      if (recipient === 'ag_beide') toast.success('E-Mail + PDFs versendet & heruntergeladen!')
+      else if (recipient === 'ag_oeffentlich') toast.success('E-Mail versendet + PDF heruntergeladen!')
+      else toast.success('E-Mail an Bauherr versendet + PDF heruntergeladen!')
       // Status auf 'versendet' setzen (nur wenn noch nicht abgeschlossen)
       if (begehung.status !== 'abgeschlossen') {
         await sb.from('begehungen').update({ status: 'versendet' }).eq('id', begehung.id)
