@@ -663,12 +663,13 @@ function LoginScreen({ onLogin }) {
 }
 
 // ─── Navigation ──────────────────────────────────────────────
-function BottomNav({ page, setPage, isAdmin }) {
+function BottomNav({ page, setPage, isAdmin, isSuperAdmin }) {
   const items = [
     { id:'dashboard', icon:'🏠', label:'Home' },
     { id:'begehungen', icon:'📋', label:'Begehungen' },
     { id:'neueBegehung', icon:'＋', label:'Neu', accent:true },
-    { id:'projekte', icon:'🏗', label:'Projekte' },
+    { id:'profil', icon:'👤', label:'Profil' },
+    ...(isSuperAdmin ? [{ id:'projekte', icon:'📁', label:'Projekte' }] : []),
     ...(isAdmin ? [{ id:'admin', icon:'⚙️', label:'Admin' }] : []),
   ]
   return (
@@ -1744,11 +1745,30 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
 }
 
 // ─── Profil / Einstellungen ──────────────────────────────────
-function ProfilSettings({ user, profile, onUpdate }) {
+function ProfilSettings({ user, profile, onUpdate, onLogout }) {
+  const [editMode, setEditMode] = useState(false)
+  const [form, setForm] = useState({
+    full_name: profile?.full_name || '',
+    firma: profile?.firma || '',
+    uid_nummer: profile?.uid_nummer || '',
+    telefon: profile?.telefon || '',
+    firma_adresse: profile?.firma_adresse || '',
+  })
   const [stempelFile, setStempelFile] = useState(null)
   const [stempelPreview, setStempelPreview] = useState(profile?.stempel_url || null)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef()
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function saveProfile() {
+    setSaving(true)
+    const { error } = await sb.from('profiles').update(form).eq('id', user.id)
+    if (error) { toast.error(error.message); setSaving(false); return }
+    onUpdate(form)
+    setEditMode(false)
+    toast.success('Profil gespeichert!')
+    setSaving(false)
+  }
 
   async function handleStempelUpload(file) {
     if (!file) return
@@ -1761,7 +1781,7 @@ function ProfilSettings({ user, profile, onUpdate }) {
   async function saveStempel() {
     if (!stempelFile) return
     setSaving(true)
-    const ext = stempelFile.type.split('/')[1] || 'png'
+    const ext = stempelFile.type.split('/')[1]?.replace('jpeg','jpg') || 'png'
     const path = user.id + '/stempel.' + ext
     const buffer = await stempelFile.arrayBuffer()
     const { error } = await sb.storage.from('bhh-photos').upload(path, buffer, { contentType: stempelFile.type, upsert: true })
@@ -1770,67 +1790,110 @@ function ProfilSettings({ user, profile, onUpdate }) {
     const url = data?.publicUrl
     await sb.from('profiles').update({ stempel_url: url }).eq('id', user.id)
     onUpdate({ stempel_url: url })
+    setStempelFile(null)
     toast.success('Stempel gespeichert!')
     setSaving(false)
   }
 
   return (
     <div style={{ paddingBottom:100 }}>
-      <div style={{ background:G.accent, padding:'14px 16px' }}>
-        <p style={{ color:'#fff', fontSize:17, fontWeight:800, margin:0 }}>Profil & Einstellungen</p>
+      {/* Header */}
+      <div style={{ background:G.accent, padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ width:42, height:42, borderRadius:'50%', background:'rgba(255,255,255,0.25)', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:16, color:'#fff', flexShrink:0 }}>
+          {(profile?.full_name || user?.email || 'U')[0].toUpperCase()}
+        </div>
+        <div>
+          <p style={{ color:'#fff', fontSize:15, fontWeight:700, margin:0 }}>{profile?.full_name || user?.email}</p>
+          <p style={{ color:'rgba(255,255,255,0.7)', fontSize:11, margin:'2px 0 0' }}>{user?.email}</p>
+        </div>
       </div>
-      <div style={{ padding:20 }}>
-        {/* Profil Info */}
-        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:16 }}>
-          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 12px' }}>Meine Daten</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-            {[
-              ['Name', profile?.full_name || '–'],
-              ['Firma', profile?.firma || '–'],
-              ['UID', profile?.uid_nummer || '–'],
-              ['Telefon', profile?.telefon || '–'],
-              ['Adresse', profile?.firma_adresse || '–'],
-              ['E-Mail', user?.email || '–'],
-            ].map(([k,v]) => (
-              <div key={k} style={{ background:'#f9fafb', borderRadius:8, padding:'8px 10px' }}>
-                <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 2px' }}>{k}</p>
-                <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v}</p>
-              </div>
-            ))}
+
+      <div style={{ padding:16 }}>
+        {/* Firmendaten */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+            <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:0 }}>Firmendaten</p>
+            <button onClick={() => setEditMode(!editMode)}
+              style={{ background: editMode ? '#f9fafb' : G.accentLight, border:`0.5px solid ${editMode ? G.border : G.accentBorder}`, borderRadius:7, padding:'5px 12px', fontSize:12, fontWeight:600, color: editMode ? G.muted : G.accent, cursor:'pointer' }}>
+              {editMode ? '✕ Abbrechen' : '✏️ Bearbeiten'}
+            </button>
           </div>
+
+          {editMode ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {[
+                ['full_name','Name *','Vor- und Nachname'],
+                ['firma','Firma *','Firmenname'],
+                ['uid_nummer','UID-Nummer','ATU12345678'],
+                ['telefon','Telefon','+43 676 460 1097'],
+                ['firma_adresse','Firmenadresse','Straße, PLZ Ort'],
+              ].map(([k,label,ph]) => (
+                <div key={k}>
+                  <label style={lbl}>{label}</label>
+                  <input style={inp} value={form[k]} onChange={e => upd(k, e.target.value)} placeholder={ph} />
+                </div>
+              ))}
+              <button onClick={saveProfile} disabled={saving}
+                style={{ background:G.accent, border:'none', borderRadius:9, padding:'12px', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', marginTop:4, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {saving ? <span className="spinner"/> : null} Speichern
+              </button>
+            </div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {[
+                ['Name', profile?.full_name],
+                ['Firma', profile?.firma],
+                ['UID', profile?.uid_nummer],
+                ['Telefon', profile?.telefon],
+                ['Adresse', profile?.firma_adresse],
+                ['E-Mail', user?.email],
+              ].map(([k,v]) => (
+                <div key={k} style={{ background:'#f9fafb', borderRadius:8, padding:'8px 10px' }}>
+                  <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 2px' }}>{k}</p>
+                  <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Stempel Upload */}
-        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16 }}>
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
           <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 4px' }}>Stempel & Unterschrift</p>
-          <p style={{ fontSize:12, color:G.muted, margin:'0 0 14px' }}>Wird auf allen Protokollen und PDFs angezeigt. PNG mit transparentem Hintergrund empfohlen.</p>
-
+          <p style={{ fontSize:12, color:G.muted, margin:'0 0 12px' }}>Wird auf allen PDFs angezeigt. PNG mit transparentem Hintergrund empfohlen.</p>
           <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => handleStempelUpload(e.target.files[0])} />
-
           {stempelPreview ? (
-            <div style={{ marginBottom:12 }}>
-              <img src={stempelPreview} alt="Stempel" style={{ maxWidth:'100%', maxHeight:120, objectFit:'contain', border:`0.5px solid ${G.border}`, borderRadius:8, padding:8, background:'#f9fafb' }} />
+            <div style={{ marginBottom:10, background:'#f9fafb', borderRadius:8, padding:10, border:`0.5px solid ${G.border}` }}>
+              <img src={stempelPreview} alt="Stempel" style={{ maxWidth:'100%', maxHeight:100, objectFit:'contain', display:'block', margin:'0 auto' }} />
             </div>
           ) : (
             <div onClick={() => fileRef.current?.click()}
-              style={{ border:`1.5px dashed ${G.border}`, borderRadius:10, padding:24, textAlign:'center', cursor:'pointer', marginBottom:12, background:'#f9fafb' }}>
+              style={{ border:`1.5px dashed ${G.border}`, borderRadius:10, padding:20, textAlign:'center', cursor:'pointer', marginBottom:10, background:'#f9fafb' }}>
               <p style={{ fontSize:13, color:G.muted, margin:0 }}>Bild auswählen</p>
-              <p style={{ fontSize:11, color:G.muted, margin:'4px 0 0' }}>PNG, JPG – max. 5MB</p>
+              <p style={{ fontSize:11, color:G.muted, margin:'3px 0 0' }}>PNG empfohlen · max. 5MB</p>
             </div>
           )}
-
           <div style={{ display:'flex', gap:8 }}>
             <button onClick={() => fileRef.current?.click()}
-              style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'10px', fontSize:13, fontWeight:600, color:G.text, cursor:'pointer' }}>
+              style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'10px', fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
               {stempelPreview ? 'Anderes Bild' : 'Bild wählen'}
             </button>
             {stempelFile && (
               <button onClick={saveStempel} disabled={saving}
-                style={{ flex:2, background:G.accent, border:'none', borderRadius:9, padding:'10px', fontSize:13, fontWeight:700, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {saving ? <span className="spinner"/> : null} Stempel speichern
+                style={{ flex:2, background:G.accent, border:'none', borderRadius:9, padding:'10px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {saving ? <span className="spinner"/> : null} Speichern
               </button>
             )}
           </div>
+        </div>
+
+        {/* Abmelden */}
+        <div style={{ background:'#fff5f5', border:`0.5px solid #fca5a5`, borderRadius:12, padding:16 }}>
+          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 10px' }}>Konto</p>
+          <button onClick={onLogout}
+            style={{ width:'100%', background:'#fef2f2', border:`0.5px solid #fca5a5`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:700, color:G.red, cursor:'pointer' }}>
+            Abmelden
+          </button>
         </div>
       </div>
     </div>
@@ -2244,7 +2307,7 @@ function App() {
       case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} isSuperAdmin={isSuperAdmin} userId={user?.id} />
-      case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} />
+      case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} onLogout={async () => { await sb.auth.signOut(); setUser(null); setProfile(null); }} />
       case 'admin':          return <AdminPanel />
       default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }
@@ -2255,7 +2318,7 @@ function App() {
       <style>{css}</style>
       {renderPage()}
       {page !== 'neueBegehung' && page !== 'begehungDetail' && (
-        <BottomNav page={page} setPage={setPage} isAdmin={isAdmin} />
+        <BottomNav page={page} setPage={setPage} isAdmin={isAdmin} isSuperAdmin={isSuperAdmin} />
       )}
       {showOnboarding && user && (
         <OnboardingModal user={user} onComplete={data => {
