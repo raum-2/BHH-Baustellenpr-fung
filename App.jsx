@@ -10,19 +10,23 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON)
 
 const GEWERKE = ['Rohbau','Ausbau / Fertigstellung']
 const NOTEN = [
-  { n:1, label:'Besser als gefordert', color:'#10b981', bg:'rgba(16,185,129,0.15)' },
-  { n:2, label:'Alle Forderungen erfüllt', color:'#3b82f6', bg:'rgba(59,130,246,0.15)' },
-  { n:3, label:'Durchschnittlich', color:'#f59e0b', bg:'rgba(245,158,11,0.15)' },
-  { n:4, label:'Verbesserungsbedarf', color:'#f97316', bg:'rgba(249,115,22,0.15)' },
-  { n:5, label:'Fehlerhaft', color:'#ef4444', bg:'rgba(239,68,68,0.15)' },
+  { n:1, label:'Besser als gefordert', color:'#16a34a', bg:'#dcfce7' },
+  { n:2, label:'Alle Forderungen erfüllt', color:'#2563eb', bg:'#dbeafe' },
+  { n:3, label:'Durchschnittlich', color:'#d97706', bg:'#fef3c7' },
+  { n:4, label:'Verbesserungsbedarf', color:'#f97316', bg:'#fff7ed' },
+  { n:5, label:'Fehlerhaft', color:'#dc2626', bg:'#fef2f2' },
 ]
 const STATUS_OPT = ['In Ordnung','Beobachtung','Verbesserung empfohlen','Mangel']
 
 // ─── CSS-in-JS ───────────────────────────────────────────────
 const G = {
-  bg: '#f8f8f8', card: '#ffffff', border: '#e5e7eb',
-  text: '#1a1a1a', muted: '#6b7280', accent: '#cc1f1f',
-  green: '#16a34a', red: '#dc2626', blue: '#2563eb',
+  bg: '#f5f5f5', card: '#ffffff', border: '#e5e7eb',
+  text: '#111111', muted: '#6b7280', accent: '#cc1f1f',
+  accentLight: '#fef2f2', accentBorder: '#fca5a5',
+  green: '#16a34a', greenLight: '#dcfce7',
+  red: '#dc2626', redLight: '#fef2f2',
+  orange: '#f97316', orangeLight: '#fff7ed',
+  blue: '#2563eb',
 }
 
 const css = `
@@ -44,11 +48,11 @@ const css = `
 
 // ─── Helpers ─────────────────────────────────────────────────
 const btn = (variant='primary', extra={}) => ({
-  padding: '10px 20px', borderRadius: 10, border: 'none', fontWeight: 600, fontSize: 14,
+  padding: '12px 20px', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 14,
   background: variant === 'primary' ? G.accent : variant === 'danger' ? G.red : variant === 'ghost' ? 'transparent' : G.card,
-  color: variant === 'primary' ? '#000' : variant === 'ghost' ? G.muted : G.text,
-  border: variant === 'ghost' ? `1.5px solid ${G.border}` : 'none',
-  cursor: 'pointer', transition: 'opacity .15s',
+  color: variant === 'primary' ? '#fff' : variant === 'ghost' ? G.muted : G.text,
+  border: variant === 'ghost' ? `0.5px solid ${G.border}` : 'none',
+  cursor: 'pointer', transition: 'opacity .15s', width: '100%',
   ...extra,
 })
 
@@ -75,6 +79,28 @@ function NoteCircle({ n, size=32 }) {
   )
 }
 
+function InfoCard({ label, value, half=true }) {
+  return (
+    <div style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'10px 12px', ...(half ? {} : {}) }}>
+      <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 3px' }}>{label}</p>
+      <p style={{ fontSize:13, fontWeight:600, color:G.text, margin:0 }}>{value || '–'}</p>
+    </div>
+  )
+}
+
+function RedHeader({ title, subtitle, onBack, right }) {
+  return (
+    <div style={{ background: G.accent, padding:'14px 16px', display:'flex', alignItems:'center', gap:10 }}>
+      {onBack && <button onClick={onBack} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0, cursor:'pointer' }}>←</button>}
+      <div style={{ flex:1 }}>
+        {subtitle && <p style={{ color:'rgba(255,255,255,0.7)', fontSize:11, margin:'0 0 2px' }}>{subtitle}</p>}
+        <p style={{ color:'#fff', fontSize:15, fontWeight:700, margin:0 }}>{title}</p>
+      </div>
+      {right}
+    </div>
+  )
+}
+
 // ─── API Calls ───────────────────────────────────────────────
 async function callClaudeAI(prompt) {
   const res = await fetch('/api/claude-text', {
@@ -88,6 +114,7 @@ async function callClaudeAI(prompt) {
 }
 
 async function analyzeImage(base64, mediaType = 'image/jpeg') {
+  if (!base64 || typeof base64 !== 'string') return ''
   const imageBase64 = base64.includes(',') ? base64.split(',')[1] : base64
   const res = await fetch('/api/claude-analyze', {
     method: 'POST',
@@ -121,6 +148,7 @@ Antworte NUR im folgenden JSON-Format, keine weiteren Erklärungen:
 
 // ─── Upload Foto zu Supabase ─────────────────────────────────
 async function uploadFoto(base64, name) {
+  if (!base64 || typeof base64 !== 'string') return null
   const match = base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/)
   if (!match) return null
   const mimeType = match[1]
@@ -624,7 +652,7 @@ function PruefpunktModal({ begehungId, punkt, onSave, onClose }) {
         {/* Öffentlicher Text */}
         {form.text_oeffentlich && (
           <>
-            <label style={{ ...lbl, color:G.green }}>📄 Öffentliches Protokoll (für Auftraggeber)</label>
+            <label style={{ fontSize:10, fontWeight:700, color:G.accent, textTransform:'uppercase', letterSpacing:'.5px', display:'block', marginBottom:5, marginTop:14 }}>Öffentliches Protokoll (für Auftraggeber)</label>
             <textarea style={{ ...inp, resize:'vertical', borderColor: G.green + '44' }} rows={4} value={form.text_oeffentlich} onChange={e => setForm(f => ({ ...f, text_oeffentlich: e.target.value }))} />
           </>
         )}
@@ -632,7 +660,7 @@ function PruefpunktModal({ begehungId, punkt, onSave, onClose }) {
         {/* Interner Text */}
         {form.text_intern && (
           <>
-            <label style={{ ...lbl, color:G.red }}>🔒 Internes Protokoll (nur intern)</label>
+            <label style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', display:'block', marginBottom:5, marginTop:14 }}>Internes Protokoll (nur intern)</label>
             <textarea style={{ ...inp, resize:'vertical', borderColor: G.red + '44' }} rows={4} value={form.text_intern} onChange={e => setForm(f => ({ ...f, text_intern: e.target.value }))} />
           </>
         )}
@@ -1094,7 +1122,7 @@ function App() {
   }
 
   return (
-    <div style={{ background:'#f8f8f8', minHeight:'100dvh', color:G.text }}>
+    <div style={{ background:G.bg, minHeight:'100dvh', color:G.text }}>
       <style>{css}</style>
       {renderPage()}
       {page !== 'neueBegehung' && page !== 'begehungDetail' && (
@@ -1108,6 +1136,6 @@ function App() {
 createRoot(document.getElementById('root')).render(
   <>
     <App />
-    <Toaster position="top-center" toastOptions={{ style: { background:'#ffffff', color:'#1a1a1a', border:'1px solid #e5e7eb', fontSize:13 } }} />
+    <Toaster position="top-center" toastOptions={{ style: { background:'#fff', color:'#111', border:'0.5px solid #e5e7eb', fontSize:13, borderRadius:10 } }} />
   </>
 )
