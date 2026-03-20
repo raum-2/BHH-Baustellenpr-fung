@@ -670,7 +670,7 @@ function OnboardingModal({ user, onComplete }) {
 }
 
 // ─── Auth ────────────────────────────────────────────────────
-function PasswordResetScreen({ onDone }) {
+function PasswordResetScreen({ onDone, resetToken }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -680,24 +680,14 @@ function PasswordResetScreen({ onDone }) {
     if (password.length < 8) { toast.error('Mindestens 8 Zeichen'); return }
     if (password !== confirm) { toast.error('Passwörter stimmen nicht überein'); return }
     setLoading(true)
-    // Ensure session is set from URL hash (Supabase PKCE flow)
-    const { data: sessionData } = await sb.auth.getSession()
-    if (!sessionData?.session) {
-      // Try exchanging code from URL hash
-      const hashParams = new URLSearchParams(window.location.hash.slice(1))
-      const accessToken = hashParams.get('access_token')
-      const refreshToken = hashParams.get('refresh_token')
-      if (accessToken) {
-        await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-      } else {
-        toast.error('Session abgelaufen. Bitte neuen Reset-Link anfordern.')
-        setLoading(false)
-        return
-      }
-    }
-    const { error } = await sb.auth.updateUser({ password })
-    if (error) { toast.error(error.message); setLoading(false); return }
-    toast.success('Passwort erfolgreich geändert!')
+    const res = await fetch('/api/verify-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: resetToken, password }),
+    })
+    const data = await res.json()
+    if (!res.ok) { toast.error(data.error || 'Fehler beim Speichern'); setLoading(false); return }
+    toast.success('Passwort erfolgreich geändert! Bitte einloggen.')
     setLoading(false)
     onDone()
   }
@@ -743,10 +733,13 @@ function LoginScreen({ onLogin, inviteData, inviteToken }) {
     e.preventDefault()
     if (!form.email.trim()) { toast.error('Bitte E-Mail eingeben'); return }
     setLoading(true)
-    const { error } = await sb.auth.resetPasswordForEmail(form.email, {
-      redirectTo: 'https://bhh-baustellenpr-fung.vercel.app',
+    const res = await fetch('/api/send-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: form.email.trim() }),
     })
-    if (error) { toast.error(error.message); setLoading(false); return }
+    const data = await res.json()
+    if (!res.ok) { toast.error(data.error || 'Fehler beim Senden'); setLoading(false); return }
     setMode('reset_sent')
     setLoading(false)
   }
@@ -3166,24 +3159,17 @@ function App() {
   const [stats, setStats]             = useState({})
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [showPasswordReset, setShowPasswordReset] = useState(false)
+  const [resetToken, setResetToken] = useState(null)
   const [inviteToken, setInviteToken] = useState(null)
   const [inviteData, setInviteData]   = useState(null)
 
   useEffect(() => {
-    // Check URL hash for auth redirects
-    const hash = window.location.hash
-    if (hash.includes('type=recovery')) {
-      // Extract tokens before clearing hash - needed for setSession
-      const hashParams = new URLSearchParams(hash.slice(1))
-      const accessToken = hashParams.get('access_token')
-      const refreshToken = hashParams.get('refresh_token')
-      if (accessToken) {
-        sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-      }
+    // Check for custom password reset token
+    const urlParams = new URLSearchParams(window.location.search)
+    const pwresetToken = urlParams.get('pwreset')
+    if (pwresetToken) {
+      setResetToken(pwresetToken)
       setShowPasswordReset(true)
-      window.history.replaceState({}, '', window.location.pathname)
-    } else if (hash.includes('error=access_denied') || hash.includes('otp_expired')) {
-      setTimeout(() => toast.error('Dieser Link ist abgelaufen. Bitte neuen Link anfordern.'), 500)
       window.history.replaceState({}, '', window.location.pathname)
     }
     // Check for invite token
@@ -3260,7 +3246,7 @@ function App() {
     </div>
   )
 
-  if (showPasswordReset) return <PasswordResetScreen onDone={() => {
+  if (showPasswordReset) return <PasswordResetScreen resetToken={resetToken} onDone={() => {
     setShowPasswordReset(false)
     sb.auth.getSession().then(({ data }) => {
       if (data?.session?.user) { setUser(data.session.user); loadData(data.session.user) }
