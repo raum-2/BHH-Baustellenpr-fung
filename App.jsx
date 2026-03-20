@@ -1996,6 +1996,45 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   )
 }
 
+// ─── AGB ──────────────────────────────────────────────────────
+function AGBPage({ setPage }) {
+  return (
+    <div style={{ paddingBottom:100 }}>
+      <div style={{ background:G.accent, padding:'14px 16px', display:'flex', alignItems:'center', gap:10 }}>
+        <button onClick={() => setPage('impressum')} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:32, height:32, fontSize:18, cursor:'pointer', flexShrink:0 }}>←</button>
+        <p style={{ color:'#fff', fontSize:16, fontWeight:800, margin:0 }}>Allgemeine Geschäftsbedingungen</p>
+      </div>
+      <div style={{ padding:20 }}>
+
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:18, marginBottom:14 }}>
+          <p style={{ fontSize:12, color:G.muted, margin:'0 0 16px' }}>Stand: März 2026 · „pi2" d.o.o., Gračanica, Bosnien und Herzegowina</p>
+
+          {[
+            ['§ 1 Geltungsbereich', `Diese Allgemeinen Geschäftsbedingungen (AGB) gelten für die Nutzung der SaaS-Plattform „Bauherrenhilfe" (nachfolgend „Plattform"), die von der „pi2" d.o.o., Donja Lohinja, Centar bb, 75320 Gračanica, Bosnien und Herzegowina (nachfolgend „Anbieter") betrieben wird. Mit der Registrierung und Nutzung der Plattform akzeptiert der Nutzer diese AGB.`],
+            ['§ 2 Leistungsbeschreibung', `Die Plattform ermöglicht registrierten Sachverständigen und Baufachleuten die digitale Erstellung, Verwaltung und den Versand von Baustellenprüfprotokollen. Der Anbieter stellt die technische Infrastruktur zur Verfügung. Die fachliche Verantwortung für die erstellten Protokolle und Gutachten liegt ausschließlich beim jeweiligen Nutzer.`],
+            ['§ 3 Registrierung und Nutzerkonto', `Die Nutzung der Plattform setzt eine Registrierung mit vollständigen und wahrheitsgemäßen Angaben voraus. Der Nutzer ist für die Sicherheit seiner Zugangsdaten verantwortlich. Eine Weitergabe der Zugangsdaten an Dritte ist nicht gestattet. Der Anbieter behält sich das Recht vor, Nutzerkonten bei Verstoß gegen diese AGB zu sperren oder zu löschen.`],
+            ['§ 4 Abonnement und Preise', `Die Nutzung der Plattform erfolgt auf Basis monatlicher Abonnements. Die aktuellen Preise und Leistungsumfänge sind im jeweiligen Nutzerkonto einsehbar. Der Anbieter behält sich das Recht vor, Preise mit einer Ankündigungsfrist von 30 Tagen anzupassen. Bei Preiserhöhungen hat der Nutzer das Recht zur außerordentlichen Kündigung.`],
+            ['§ 5 Zahlungsbedingungen', `Abonnementgebühren werden monatlich im Voraus fällig. Die Zahlung erfolgt über den vom Anbieter bereitgestellten Zahlungsdienstleister. Bei Zahlungsverzug behält sich der Anbieter vor, den Zugang zur Plattform zu sperren.`],
+            ['§ 6 Kündigung', `Das Abonnement kann vom Nutzer jederzeit zum Ende des laufenden Abrechnungszeitraums gekündigt werden. Die Kündigung erfolgt über die Plattform unter „Profil → Account löschen" oder per E-Mail an office@pi-2.eu. Nach der Kündigung werden alle Nutzerdaten innerhalb von 30 Tagen gelöscht.`],
+            ['§ 7 Datenschutz', `Die Verarbeitung personenbezogener Daten erfolgt gemäß der Datenschutzerklärung des Anbieters und in Übereinstimmung mit der DSGVO. Die Datenschutzerklärung ist unter „Profil → Impressum & Datenschutz" abrufbar.`],
+            ['§ 8 Haftungsbeschränkung', `Der Anbieter haftet nicht für die inhaltliche Richtigkeit der durch Nutzer erstellten Protokolle und Gutachten. Die Plattform wird als technisches Hilfsmittel bereitgestellt. Der Anbieter haftet nur bei Vorsatz und grober Fahrlässigkeit. Die Haftung für leichte Fahrlässigkeit ist ausgeschlossen, soweit keine wesentlichen Vertragspflichten verletzt werden.`],
+            ['§ 9 Verfügbarkeit', `Der Anbieter bemüht sich um eine hohe Verfügbarkeit der Plattform, garantiert jedoch keine ununterbrochene Verfügbarkeit. Wartungsarbeiten werden nach Möglichkeit vorab angekündigt. Ein Anspruch auf Verfügbarkeit besteht nicht.`],
+            ['§ 10 Änderungen der AGB', `Der Anbieter behält sich das Recht vor, diese AGB mit einer Ankündigungsfrist von 30 Tagen zu ändern. Änderungen werden dem Nutzer per E-Mail mitgeteilt. Widerspricht der Nutzer nicht innerhalb von 30 Tagen, gelten die neuen AGB als akzeptiert.`],
+            ['§ 11 Anwendbares Recht und Gerichtsstand', `Es gilt das Recht von Bosnien und Herzegowina. Gerichtsstand ist Gračanica, Bosnien und Herzegowina. Für Verbraucher gelten die zwingenden Verbraucherschutzvorschriften des jeweiligen Wohnsitzlandes.`],
+            ['§ 12 Kontakt', `Bei Fragen zu diesen AGB wenden Sie sich an: „pi2" d.o.o. · office@pi-2.eu · Donja Lohinja, Centar bb, 75320 Gračanica, BiH`],
+          ].map(([title, text]) => (
+            <div key={title} style={{ marginBottom:16, paddingBottom:16, borderBottom:`0.5px solid ${G.border}` }}>
+              <p style={{ fontSize:13, fontWeight:700, color:G.accent, margin:'0 0 6px' }}>{title}</p>
+              <p style={{ fontSize:12, color:G.text, lineHeight:1.7, margin:0 }}>{text}</p>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ─── Impressum & Datenschutz ─────────────────────────────────
 function ImpressumPage({ setPage }) {
   return (
@@ -2043,6 +2082,14 @@ function ImpressumPage({ setPage }) {
               <p style={{ fontSize:12, color:G.text, margin:0, lineHeight:1.6 }}>{v}</p>
             </div>
           ))}
+        </div>
+
+        {/* AGB */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:18, marginBottom:14 }}>
+          <button onClick={() => setPage('agb')}
+            style={{ width:'100%', background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:600, color:G.text, cursor:'pointer' }}>
+            📄 Allgemeine Geschäftsbedingungen (AGB)
+          </button>
         </div>
 
         {/* Haftungsausschluss */}
@@ -2882,6 +2929,7 @@ function App() {
       case 'projekte':       return <Projekte setPage={setPage} isSuperAdmin={isSuperAdmin} userId={user?.id} />
       case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} onLogout={async () => { await sb.auth.signOut(); setUser(null); setProfile(null); }} onSetPage={setPage} />
       case 'impressum':      return <ImpressumPage setPage={setPage} />
+      case 'agb':            return <AGBPage setPage={setPage} />
       case 'admin':          return <AdminPanel />
       default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }
