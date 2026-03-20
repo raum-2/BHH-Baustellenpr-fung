@@ -573,7 +573,10 @@ function OnboardingModal({ user, onComplete }) {
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
+    if (!form.full_name.trim()) { toast.error('Name ist Pflicht'); return }
     if (!form.firma.trim()) { toast.error('Firmenname ist Pflicht'); return }
+    if (!form.telefon.trim()) { toast.error('Telefon ist Pflicht'); return }
+    if (!form.firma_adresse.trim()) { toast.error('Firmenadresse ist Pflicht'); return }
     setSaving(true)
     // 1. Company anlegen
     const { data: company, error: cErr } = await sb.from('companies').insert({
@@ -616,19 +619,19 @@ function OnboardingModal({ user, onComplete }) {
         <div style={{ background:G.accent, padding:'20px 20px 16px', borderRadius:'16px 16px 0 0' }}>
           <p style={{ color:'rgba(255,255,255,0.75)', fontSize:12, margin:'0 0 4px' }}>Willkommen bei</p>
           <p style={{ color:'#fff', fontSize:18, fontWeight:800, margin:0 }}>Bauherrenhilfe</p>
-          <p style={{ color:'rgba(255,255,255,0.7)', fontSize:12, margin:'6px 0 0' }}>Bitte vervollständige dein Firmenprofil um fortzufahren.</p>
+          <p style={{ color:'rgba(255,255,255,0.7)', fontSize:12, margin:'6px 0 0' }}>Alle Felder sind Pflichtfelder. Ohne vollständige Angaben ist keine Nutzung möglich.</p>
         </div>
         <div style={{ padding:20 }}>
           <label style={lbl}>Vollständiger Name *</label>
-          <input style={inp} value={form.full_name} onChange={e => upd('full_name', e.target.value)} placeholder="Vor- und Nachname" />
+          <input style={{ ...inp, borderColor: !form.full_name ? '#fca5a5' : G.border }} value={form.full_name} onChange={e => upd('full_name', e.target.value)} placeholder="Vor- und Nachname" />
           <label style={lbl}>Firmenname *</label>
-          <input style={inp} value={form.firma} onChange={e => upd('firma', e.target.value)} placeholder="Musterbau GmbH" autoFocus />
+          <input style={{ ...inp, borderColor: !form.firma ? '#fca5a5' : G.border }} value={form.firma} onChange={e => upd('firma', e.target.value)} placeholder="Musterbau GmbH" autoFocus />
           <label style={lbl}>UID-Nummer</label>
           <input style={inp} value={form.uid_nummer} onChange={e => upd('uid_nummer', e.target.value)} placeholder="ATU12345678" />
-          <label style={lbl}>Telefon</label>
-          <input style={inp} value={form.telefon} onChange={e => upd('telefon', e.target.value)} placeholder="+43 123 456 789" />
-          <label style={lbl}>Firmenadresse</label>
-          <input style={inp} value={form.firma_adresse} onChange={e => upd('firma_adresse', e.target.value)} placeholder="Musterstraße 1, 8010 Graz" />
+          <label style={lbl}>Telefon *</label>
+          <input style={{ ...inp, borderColor: !form.telefon ? '#fca5a5' : G.border }} value={form.telefon} onChange={e => upd('telefon', e.target.value)} placeholder="+43 123 456 789" />
+          <label style={lbl}>Firmenadresse *</label>
+          <input style={{ ...inp, borderColor: !form.firma_adresse ? '#fca5a5' : G.border }} value={form.firma_adresse} onChange={e => upd('firma_adresse', e.target.value)} placeholder="Musterstraße 1, 8010 Graz" />
           <button onClick={handleSave} disabled={saving}
             style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px 20px', width:'100%', fontSize:14, fontWeight:700, cursor:'pointer', marginTop:20, display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
             {saving ? <span className="spinner"/> : null} Profil speichern & starten
