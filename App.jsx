@@ -613,7 +613,7 @@ function OnboardingModal({ user, onComplete }) {
       email: user.email,
       telefon: form.telefon,
       plan: 'trial',
-      max_begehungen: 10,
+      max_begehungen: 2,
       max_users: 1,
     }).select().single()
     if (cErr) { toast.error('Firma konnte nicht angelegt werden: ' + cErr.message); setSaving(false); return }
@@ -785,6 +785,19 @@ function BottomNav({ page, setPage, isAdmin, isSuperAdmin }) {
 // ─── Dashboard ───────────────────────────────────────────────
 function Dashboard({ user, profile, setPage, stats, setSelectedBegehung, isSuperAdmin, role }) {
   const hour = new Date().getHours()
+  const [limitInfo, setLimitInfo] = useState(null)
+
+  useEffect(() => {
+    async function checkLimit() {
+      if (!profile?.company_id || isSuperAdmin) return
+      const { data: company } = await sb.from('companies').select('max_begehungen, plan').eq('id', profile.company_id).single()
+      if (!company) return
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0)
+      const { count } = await sb.from('begehungen').select('id', { count:'exact', head:true }).eq('company_id', profile.company_id).gte('created_at', monthStart.toISOString())
+      setLimitInfo({ used: count || 0, max: company.max_begehungen, plan: company.plan })
+    }
+    checkLimit()
+  }, [profile?.company_id])
   const greeting = hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend'
 
   return (
@@ -796,6 +809,20 @@ function Dashboard({ user, profile, setPage, stats, setSelectedBegehung, isSuper
       </div>
 
       {/* Quick Action */}
+      {limitInfo && limitInfo.max <= 10 && (
+        <div style={{ background: limitInfo.used >= limitInfo.max ? '#fef2f2' : '#fffbeb', border:`0.5px solid ${limitInfo.used >= limitInfo.max ? '#fca5a5' : '#fcd34d'}`, borderRadius:12, padding:'10px 14px', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <p style={{ fontSize:12, fontWeight:700, color: limitInfo.used >= limitInfo.max ? G.accent : '#d97706', margin:'0 0 2px' }}>
+              {limitInfo.used >= limitInfo.max ? '⚠️ Monatslimit erreicht' : `📊 ${limitInfo.used}/${limitInfo.max} Begehungen diesen Monat`}
+            </p>
+            <p style={{ fontSize:11, color:G.muted, margin:0 }}>
+              {limitInfo.used >= limitInfo.max ? 'Upgrade erforderlich für weitere Begehungen' : `Noch ${limitInfo.max - limitInfo.used} verfügbar`}
+            </p>
+          </div>
+          <div style={{ background:`linear-gradient(90deg, ${limitInfo.used >= limitInfo.max ? G.accent : '#d97706'} ${Math.round(limitInfo.used/limitInfo.max*100)}%, #f3f4f6 0%)`, borderRadius:6, height:6, width:60, flexShrink:0 }} />
+        </div>
+      )}
+
       <button onClick={() => setPage('neueBegehung')} style={{ width:'100%', background:`linear-gradient(135deg, ${G.accent}, #f97316)`, border:'none', borderRadius:16, padding:20, display:'flex', alignItems:'center', gap:16, marginBottom:20, cursor:'pointer', boxShadow:'0 8px 24px rgba(245,158,11,0.25)' }}>
         <div style={{ width:48, height:48, borderRadius:12, background:'rgba(0,0,0,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, flexShrink:0 }}>📋</div>
         <div style={{ textAlign:'left' }}>
@@ -933,18 +960,37 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
       return
     }
     setSaving(true)
-    // company_id aus eigenem Profil holen
+    // company_id + Limit prüfen
     const { data: myProfile } = await sb.from('profiles').select('company_id').eq('id', user.id).single()
+    const companyId = myProfile?.company_id
+
+    if (companyId) {
+      // Aktuelles Limit der Company laden
+      const { data: company } = await sb.from('companies').select('max_begehungen, plan').eq('id', companyId).single()
+      const maxBeg = company?.max_begehungen ?? 2
+      // Aktuelle Anzahl Begehungen diesen Monat laden
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0)
+      const { count } = await sb.from('begehungen')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .gte('created_at', monthStart.toISOString())
+      if ((count || 0) >= maxBeg) {
+        const planNames = { trial: 'Trial', s: 'Paket S', m: 'Paket M', l: 'Paket L' }
+        toast.error(`Limit erreicht: ${planNames[company?.plan] || 'Ihr Paket'} erlaubt max. ${maxBeg} Begehungen pro Monat. Bitte upgraden.`, { duration: 6000 })
+        setSaving(false)
+        return
+      }
+    }
+
     const { data, error } = await sb.from('begehungen').insert({
       ...form,
       user_id: user.id,
-      company_id: myProfile?.company_id || null,
+      company_id: companyId || null,
       gesamtnote: null,
       status: 'erstellt',
     }).select().single()
     if (error) { toast.error(error.message); setSaving(false); return }
-    // Usage tracken
-    await trackUsage(myProfile?.company_id, user.id, 'begehung_erstellt', { titel: form.titel })
+    await trackUsage(companyId, user.id, 'begehung_erstellt', { titel: form.titel })
     toast.success('Begehung angelegt!')
     onCreated(data)
     setPage('begehungDetail')
