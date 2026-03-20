@@ -1179,7 +1179,7 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
 }
 
 // ─── Prüfpunkt Editor ────────────────────────────────────────
-function PruefpunktModal({ begehungId, punkt, onSave, onClose }) {
+function PruefpunktModal({ begehungId, userId, punkt, onSave, onClose }) {
   const [form, setForm] = useState({
     titel: punkt?.titel || '',
     rohtext: punkt?.rohtext || '',
@@ -2147,6 +2147,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       {showModal && (
         <PruefpunktModal
           begehungId={begehung.id}
+          userId={user.id}
           punkt={editPunkt}
           onSave={handleSavePunkt}
           onClose={() => { setShowModal(false); setEditPunkt(null) }}
