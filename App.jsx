@@ -2134,16 +2134,20 @@ function TeamPage({ user, profile, setPage }) {
 
   useEffect(() => { load() }, [])
 
+  const [companyPlan, setCompanyPlan] = useState('l')
+
   async function load() {
     setLoading(true)
     const companyId = profile?.company_id
     if (!companyId) { setLoading(false); return }
-    const [mRes, iRes] = await Promise.all([
+    const [mRes, iRes, cRes] = await Promise.all([
       sb.from('profiles').select('id, full_name, firma, role, telefon').eq('company_id', companyId),
       sb.from('invitations').select('*').eq('company_id', companyId).eq('used', false).order('created_at', { ascending: false }),
+      sb.from('companies').select('plan, max_users').eq('id', companyId).single(),
     ])
     setMembers(mRes.data || [])
     setInvitations(iRes.data || [])
+    if (cRes.data) setCompanyPlan(cRes.data.plan || 'l')
     setLoading(false)
   }
 
@@ -2185,8 +2189,7 @@ function TeamPage({ user, profile, setPage }) {
     toast.success('Einladung widerrufen')
   }
 
-  const plan = profile?.plan || 'trial'
-  const maxUsers = { trial:1, s:3, m:10, l:50 }[plan] || 1
+  const maxUsers = { trial:1, s:3, m:10, l:50 }[companyPlan] || 50
 
   return (
     <div style={{ paddingBottom:100 }}>
