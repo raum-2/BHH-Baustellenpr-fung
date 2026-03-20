@@ -567,14 +567,19 @@ Antworte NUR im folgenden JSON-Format, keine weiteren Erklärungen:
 }
 
 // ─── Upload Foto zu Supabase ─────────────────────────────────
-async function uploadFoto(base64, name) {
+async function uploadFoto(base64, name, companyId, begehungId) {
   if (!base64 || typeof base64 !== 'string') return null
   const match = base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/)
   if (!match) return null
   const mimeType = match[1]
   const buffer = Uint8Array.from(atob(match[2]), c => c.charCodeAt(0))
   const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg'
-  const path = `${Date.now()}-${name || 'foto'}.${ext}`
+  // Neue saubere Struktur: company/begehungen/begehung-id/timestamp-name.ext
+  // Fallback für alte Uploads ohne company/begehung ID
+  const folder = companyId && begehungId
+    ? `${companyId}/begehungen/${begehungId}`
+    : 'allgemein'
+  const path = `${folder}/${Date.now()}-${name || 'foto'}.${ext}`
   const { error } = await sb.storage.from('bhh-photos').upload(path, buffer, { contentType: mimeType, upsert: true })
   if (error) return null
   const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
@@ -1078,11 +1083,12 @@ function PruefpunktModal({ begehungId, punkt, onSave, onClose }) {
     if (!form.titel.trim()) { toast.error('Titel ist Pflichtfeld'); return }
     setSaving(true)
 
-    // Fotos hochladen
+    // Fotos hochladen – strukturierter Pfad
+    const { data: prof } = await sb.from('profiles').select('company_id').eq('id', userId).maybeSingle()
     const uploadedFotos = []
     for (const foto of form.fotos) {
       if (foto.url) { uploadedFotos.push(foto); continue }
-      const url = await uploadFoto(foto.base64, 'pruefpunkt')
+      const url = await uploadFoto(foto.base64, 'pruefpunkt', prof?.company_id, begehungId)
       uploadedFotos.push({ ...foto, url, base64: null })
     }
 
@@ -1292,7 +1298,10 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         const { data: svProf } = await sb.from('profiles').select('stempel_url, stempel_size_mm').eq('id', begehung.user_id || '').maybeSingle()
         const d = await generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl: svProf?.stempel_url || null, stempelSizeMm: svProf?.stempel_size_mm || 50, creatorName: begehung.sachverstaendiger })
         const blob = d.output('blob')
-        const path = 'protokolle/' + begehung.id + '_' + type + '_' + Date.now() + '.pdf'
+        // Strukturierter PDF-Pfad
+        const { data: pdfProf } = await sb.from('profiles').select('company_id').eq('id', begehung.user_id || '').maybeSingle()
+        const pdfFolder = pdfProf?.company_id ? pdfProf.company_id + '/protokolle' : 'protokolle'
+        const path = pdfFolder + '/' + begehung.id + '_' + type + '_' + Date.now() + '.pdf'
         await sb.storage.from('bhh-photos').upload(path, blob, { contentType: 'application/pdf', upsert: true })
         const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
         return data?.publicUrl || null
@@ -2120,7 +2129,9 @@ function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
         setStempelPreview(previewUrl)
         setCropMode(false)
         // Upload
-        const path = user.id + '/stempel.png'
+        const { data: stProf } = await sb.from('profiles').select('company_id').eq('id', user.id).maybeSingle()
+        const stFolder = stProf?.company_id ? stProf.company_id + '/' + user.id : user.id
+        const path = stFolder + '/stempel.png'
         const buffer = await blob.arrayBuffer()
         const { error } = await sb.storage.from('bhh-photos').upload(path, buffer, { contentType: 'image/png', upsert: true })
         if (error) { toast.error(error.message); setSaving(false); return }
