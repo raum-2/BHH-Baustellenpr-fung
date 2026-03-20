@@ -1834,8 +1834,72 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   )
 }
 
+// ─── Impressum & Datenschutz ─────────────────────────────────
+function ImpressumPage({ setPage }) {
+  return (
+    <div style={{ paddingBottom:100 }}>
+      <div style={{ background:G.accent, padding:'14px 16px', display:'flex', alignItems:'center', gap:10 }}>
+        <button onClick={() => setPage('profil')} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:32, height:32, fontSize:18, cursor:'pointer', flexShrink:0 }}>←</button>
+        <p style={{ color:'#fff', fontSize:16, fontWeight:800, margin:0 }}>Impressum & Datenschutz</p>
+      </div>
+      <div style={{ padding:20 }}>
+
+        {/* Impressum */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:18, marginBottom:14 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:G.accent, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 12px' }}>Impressum</p>
+          {[
+            ['Betreiber', '"pi2" d.o.o.'],
+            ['Geschäftsführerin', 'Mevlija Šestan'],
+            ['Adresse', 'Donja Lohinja, Centar bb, 75320 Gračanica, Bosnien und Herzegowina'],
+            ['JIB', '4210486660006'],
+            ['MBS', '32-01-0009-22'],
+            ['E-Mail', 'office@pi-2.eu'],
+            ['Plattform', 'Bauherrenhilfe · bauherrenhilfe.at'],
+          ].map(([k,v]) => (
+            <div key={k} style={{ display:'flex', gap:12, paddingBottom:8, borderBottom:`0.5px solid ${G.border}`, marginBottom:8 }}>
+              <p style={{ fontSize:12, color:G.muted, fontWeight:600, margin:0, minWidth:120, flexShrink:0 }}>{k}</p>
+              <p style={{ fontSize:12, color:G.text, margin:0 }}>{v}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Datenschutz */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:18, marginBottom:14 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:G.accent, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 12px' }}>Datenschutzerklärung</p>
+          {[
+            ['Verantwortlicher', '"pi2" d.o.o., Gračanica, Bosnien und Herzegowina · office@pi-2.eu'],
+            ['Zweck der Verarbeitung', 'Durchführung und Dokumentation von Baustellenprüfungen, Erstellung und Versand von Protokollen'],
+            ['Verarbeitete Daten', 'Name, E-Mail-Adresse, Firmendaten, Projektdaten, Fotos von Baustellen'],
+            ['Rechtsgrundlage', 'Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung)'],
+            ['Auftragsverarbeiter', 'Supabase Inc. (Datenspeicherung), Twilio SendGrid (E-Mail-Versand), Anthropic PBC (KI-Analyse)'],
+            ['Datenspeicherung', 'Daten werden auf Servern der EU-Region gespeichert'],
+            ['Speicherdauer', 'Daten werden gespeichert solange der Account aktiv ist. Nach Kündigung werden Daten innerhalb von 30 Tagen gelöscht.'],
+            ['Ihre Rechte', 'Auskunft, Berichtigung, Löschung, Einschränkung, Widerspruch – Anfragen an office@pi-2.eu'],
+          ].map(([k,v]) => (
+            <div key={k} style={{ paddingBottom:10, borderBottom:`0.5px solid ${G.border}`, marginBottom:10 }}>
+              <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 3px' }}>{k}</p>
+              <p style={{ fontSize:12, color:G.text, margin:0, lineHeight:1.6 }}>{v}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Haftungsausschluss */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:18 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:G.accent, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 12px' }}>Haftungsausschluss</p>
+          <p style={{ fontSize:12, color:G.text, lineHeight:1.7, margin:0 }}>
+            Die durch die App erstellten Protokolle und Gutachten dienen der Dokumentation und Information. 
+            "pi2" d.o.o. übernimmt keine Haftung für die Richtigkeit der durch Nutzer eingegebenen Daten. 
+            Die fachliche Verantwortung für die Inhalte der Prüfprotokolle liegt beim jeweiligen Sachverständigen.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ─── Profil / Einstellungen ──────────────────────────────────
-function ProfilSettings({ user, profile, onUpdate, onLogout }) {
+function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
   const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState({
     full_name: profile?.full_name || '',
@@ -1977,12 +2041,31 @@ function ProfilSettings({ user, profile, onUpdate, onLogout }) {
           </div>
         </div>
 
-        {/* Abmelden */}
+        {/* Impressum & Datenschutz */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
+          <button onClick={() => onSetPage('impressum')}
+            style={{ width:'100%', background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:600, color:G.text, cursor:'pointer' }}>
+            📋 Impressum & Datenschutz
+          </button>
+        </div>
+
+        {/* Konto */}
         <div style={{ background:'#fff5f5', border:`0.5px solid #fca5a5`, borderRadius:12, padding:16 }}>
           <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 10px' }}>Konto</p>
           <button onClick={onLogout}
-            style={{ width:'100%', background:'#fef2f2', border:`0.5px solid #fca5a5`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:700, color:G.red, cursor:'pointer' }}>
+            style={{ width:'100%', background:'#fef2f2', border:`0.5px solid #fca5a5`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:700, color:G.red, cursor:'pointer', marginBottom:8 }}>
             Abmelden
+          </button>
+          <button onClick={async () => {
+            if (!window.confirm('Account wirklich löschen? Alle Daten werden unwiderruflich gelöscht.')) return
+            if (!window.confirm('Letzte Bestätigung: Account und alle Daten löschen?')) return
+            await sb.from('begehungen').delete().eq('user_id', user.id)
+            await sb.from('profiles').delete().eq('id', user.id)
+            await sb.auth.signOut()
+            onLogout()
+          }}
+            style={{ width:'100%', background:'transparent', border:`0.5px solid #fca5a5`, borderRadius:9, padding:'11px', fontSize:12, fontWeight:600, color:G.muted, cursor:'pointer' }}>
+            Account löschen
           </button>
         </div>
       </div>
@@ -2508,7 +2591,8 @@ function App() {
       case 'neueBegehung':   return <NeueBegehung user={user} profile={profile} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} isSuperAdmin={isSuperAdmin} userId={user?.id} />
-      case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} onLogout={async () => { await sb.auth.signOut(); setUser(null); setProfile(null); }} />
+      case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} onLogout={async () => { await sb.auth.signOut(); setUser(null); setProfile(null); }} onSetPage={setPage} />
+      case 'impressum':      return <ImpressumPage setPage={setPage} />
       case 'admin':          return <AdminPanel />
       default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }
