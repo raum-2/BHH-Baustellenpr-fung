@@ -671,10 +671,22 @@ function OnboardingModal({ user, onComplete }) {
 
 // ─── Auth ────────────────────────────────────────────────────
 function LoginScreen({ onLogin, inviteData, inviteToken }) {
-  const [mode, setMode] = useState(inviteData ? 'register' : 'login')
+  const [mode, setMode] = useState(inviteData ? 'register' : 'login') // login | register | reset | reset_sent
   const [form, setForm] = useState({ email: inviteData?.email || '', password:'', name:'', role: inviteData?.role || 'gutachter' })
   const [loading, setLoading] = useState(false)
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleReset(e) {
+    e.preventDefault()
+    if (!form.email.trim()) { toast.error('Bitte E-Mail eingeben'); return }
+    setLoading(true)
+    const { error } = await sb.auth.resetPasswordForEmail(form.email, {
+      redirectTo: window.location.origin + '?reset=true',
+    })
+    if (error) { toast.error(error.message); setLoading(false); return }
+    setMode('reset_sent')
+    setLoading(false)
+  }
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -731,27 +743,57 @@ function LoginScreen({ onLogin, inviteData, inviteToken }) {
             ))}
           </div>
 
-          <form onSubmit={mode === 'login' ? handleLogin : handleRegister}>
-            {mode === 'register' && (
-              <>
-                <label style={lbl}>Vollständiger Name</label>
-                <input style={inp} value={form.name} onChange={e => upd('name', e.target.value)} placeholder="Ing. Max Mustermann" required />
-                <label style={lbl}>Rolle</label>
-                <select style={inp} value={form.role} onChange={e => upd('role', e.target.value)}>
-                  <option value="gutachter">Sachverständiger / Gutachter</option>
-                  <option value="admin">Administrator</option>
-                </select>
-              </>
-            )}
-            <label style={lbl}>E-Mail</label>
-            <input style={inp} type="email" value={form.email} onChange={e => upd('email', e.target.value)} placeholder="name@firma.at" required />
-            <label style={lbl}>Passwort</label>
-            <input style={inp} type="password" value={form.password} onChange={e => upd('password', e.target.value)} placeholder="••••••••" required />
+          {/* Reset sent confirmation */}
+          {mode === 'reset_sent' ? (
+            <div style={{ textAlign:'center', padding:'10px 0' }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>📧</div>
+              <p style={{ fontSize:15, fontWeight:700, color:G.text, margin:'0 0 8px' }}>E-Mail gesendet!</p>
+              <p style={{ fontSize:13, color:G.muted, margin:'0 0 20px' }}>Prüfen Sie Ihr Postfach und klicken Sie auf den Link zum Zurücksetzen.</p>
+              <button onClick={() => setMode('login')} style={{ ...btn('primary'), width:'100%', padding:'12px', fontSize:14 }}>
+                Zurück zum Login
+              </button>
+            </div>
+          ) : mode === 'reset' ? (
+            <form onSubmit={handleReset}>
+              <p style={{ fontSize:13, color:G.muted, margin:'0 0 16px' }}>Geben Sie Ihre E-Mail ein. Sie erhalten einen Link zum Zurücksetzen des Passworts.</p>
+              <label style={lbl}>E-Mail</label>
+              <input style={inp} type="email" value={form.email} onChange={e => upd('email', e.target.value)} placeholder="name@firma.at" required autoFocus />
+              <button style={{ ...btn('primary'), width:'100%', marginTop:16, padding:'13px', fontSize:15 }} disabled={loading}>
+                {loading ? <span className="spinner" /> : 'Reset-Link senden'}
+              </button>
+              <p style={{ textAlign:'center', marginTop:14, fontSize:13, color:G.muted }}>
+                <span onClick={() => setMode('login')} style={{ color:G.accent, cursor:'pointer', fontWeight:600 }}>← Zurück zum Login</span>
+              </p>
+            </form>
+          ) : (
+            <form onSubmit={mode === 'login' ? handleLogin : handleRegister}>
+              {mode === 'register' && (
+                <>
+                  <label style={lbl}>Vollständiger Name</label>
+                  <input style={inp} value={form.name} onChange={e => upd('name', e.target.value)} placeholder="Ing. Max Mustermann" required />
+                  <label style={lbl}>Rolle</label>
+                  <select style={inp} value={form.role} onChange={e => upd('role', e.target.value)}>
+                    <option value="gutachter">Sachverständiger / Gutachter</option>
+                    <option value="admin">Administrator</option>
+                  </select>
+                </>
+              )}
+              <label style={lbl}>E-Mail</label>
+              <input style={inp} type="email" value={form.email} onChange={e => upd('email', e.target.value)} placeholder="name@firma.at" required />
+              <label style={lbl}>Passwort</label>
+              <input style={inp} type="password" value={form.password} onChange={e => upd('password', e.target.value)} placeholder="••••••••" required />
 
-            <button style={{ ...btn('primary'), width:'100%', marginTop:24, padding:'13px', fontSize:15 }} disabled={loading}>
-              {loading ? <span className="spinner" /> : mode === 'login' ? 'Anmelden' : 'Konto erstellen'}
-            </button>
-          </form>
+              <button style={{ ...btn('primary'), width:'100%', marginTop:24, padding:'13px', fontSize:15 }} disabled={loading}>
+                {loading ? <span className="spinner" /> : mode === 'login' ? 'Anmelden' : 'Konto erstellen'}
+              </button>
+
+              {mode === 'login' && (
+                <p style={{ textAlign:'center', marginTop:14, fontSize:13 }}>
+                  <span onClick={() => setMode('reset')} style={{ color:G.accent, cursor:'pointer', fontWeight:600 }}>Passwort vergessen?</span>
+                </p>
+              )}
+            </form>
+          )}
         </div>
       </div>
     </div>
