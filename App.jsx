@@ -1047,8 +1047,8 @@ function PruefpunktModal({ begehungId, punkt, onSave, onClose }) {
             return { ...f, fotos }
           })
           toast.success('KI-Analyse abgeschlossen')
-      // Usage tracken
       try {
+        await addHistory('ki_analyse', { pruefpunkte_count: punkte.length })
         const { data: prof2 } = await sb.from('profiles').select('company_id').eq('id', begehung?.user_id || '').maybeSingle()
         if (prof2?.company_id) await trackUsage(prof2.company_id, begehung?.user_id, 'ki_analyse')
       } catch(e) {}
@@ -1213,9 +1213,33 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   const [showPreview, setShowPreview] = useState(null) // null | 'ag_beide' | 'ag_oeffentlich' | 'bauherr'
   const [editPunkt, setEditPunkt] = useState(null)
   const [sending, setSending] = useState(false)
-  const [viewMode, setViewMode] = useState('liste') // liste | oeffentlich | intern
+  const [viewMode, setViewMode] = useState('liste') // liste | oeffentlich | intern | historie
+  const [history, setHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyDetail, setHistoryDetail] = useState(null)
 
   useEffect(() => { fetchPunkte() }, [begehung.id])
+
+  async function fetchHistory() {
+    setHistoryLoading(true)
+    const { data } = await sb.from('begehung_history')
+      .select('*')
+      .eq('begehung_id', begehung.id)
+      .order('created_at', { ascending: false })
+    setHistory(data || [])
+    setHistoryLoading(false)
+  }
+
+  async function addHistory(eventType, meta = {}) {
+    const { data: prof } = await sb.from('profiles').select('company_id').eq('id', user.id).maybeSingle()
+    await sb.from('begehung_history').insert({
+      begehung_id: begehung.id,
+      company_id: prof?.company_id || null,
+      user_id: user.id,
+      event_type: eventType,
+      meta,
+    })
+  }
 
   async function fetchPunkte() {
     setLoading(true)
@@ -1292,8 +1316,15 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         throw new Error(errData.error || 'Versand fehlgeschlagen')
       }
       toast.dismiss('pdf-send')
-      // Usage tracken
+      // History + Usage tracken
       try {
+        const toEmail = recipient === 'bauherr' ? begehung.kunde_email : begehung.auftraggeber_email
+        await addHistory('protokoll_versendet', {
+          recipient,
+          email: toEmail,
+          link_oeff: linkOeff,
+          link_intern: linkIntern,
+        })
         const { data: prof3 } = await sb.from('profiles').select('company_id').eq('id', begehung?.user_id || '').maybeSingle()
         if (prof3?.company_id) await trackUsage(prof3.company_id, begehung?.user_id, 'protokoll_versendet', { recipient })
       } catch(e) {}
@@ -1432,6 +1463,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   async function saveEditedText(p, type) {
     const key = p.id + '_' + type
     const text = editTexts[key]
+    // Track
+    try { await addHistory('text_bearbeitet', { titel: p.titel, type }) } catch(e) {}
     if (text === undefined) return
     const field = type === 'oeffentlich' ? 'text_oeffentlich' : 'text_intern'
     await sb.from('pruefpunkte').update({ [field]: text }).eq('id', p.id)
@@ -1550,8 +1583,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         </div>
         {/* Tabs */}
         <div style={{ display:'flex', gap:0, overflowX:'auto', borderTop:'1px solid rgba(255,255,255,0.15)' }}>
-          {[['liste','Prüfpunkte'],['oeffentlich','Öffentlich'],['intern','Intern']].map(([id, label]) => (
-            <button key={id} onClick={() => setViewMode(id)} style={{ padding:'10px 18px', border:'none', background:'transparent', color: viewMode===id ? '#fff' : 'rgba(255,255,255,0.6)', fontWeight: viewMode===id ? 700 : 400, fontSize:13, cursor:'pointer', borderBottom: viewMode===id ? '2px solid #fff' : '2px solid transparent', whiteSpace:'nowrap', flexShrink:0 }}>
+          {[['liste','Prüfpunkte'],['oeffentlich','Öffentlich'],['intern','Intern'],['historie','Historie']].map(([id, label]) => (
+            <button key={id} onClick={() => { setViewMode(id); if (id === 'historie') fetchHistory() }} style={{ padding:'10px 18px', border:'none', background:'transparent', color: viewMode===id ? '#fff' : 'rgba(255,255,255,0.6)', fontWeight: viewMode===id ? 700 : 400, fontSize:13, cursor:'pointer', borderBottom: viewMode===id ? '2px solid #fff' : '2px solid transparent', whiteSpace:'nowrap', flexShrink:0 }}>
               {label}
             </button>
           ))}
@@ -1737,6 +1770,113 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         )}
 
         {/* Internes Protokoll */}
+        {/* ── Historie Tab ── */}
+        {viewMode === 'historie' && (
+          <div>
+            {historyLoading ? (
+              <div style={{ textAlign:'center', padding:40, color:G.muted }}>Lädt…</div>
+            ) : history.length === 0 ? (
+              <div style={{ textAlign:'center', padding:40 }}>
+                <p style={{ fontSize:32, marginBottom:8 }}>📋</p>
+                <p style={{ color:G.muted, fontSize:13 }}>Noch keine Einträge</p>
+              </div>
+            ) : (
+              <div style={{ position:'relative', paddingLeft:24 }}>
+                <div style={{ position:'absolute', left:8, top:0, bottom:0, width:2, background:G.border }} />
+                {history.map((h, i) => {
+                  const cfg = {
+                    protokoll_versendet: { color:'#16a34a', bg:'#f0fdf4', border:'#86efac', icon:'✓', label:'Protokoll versendet' },
+                    ki_analyse:          { color:'#d97706', bg:'#fffbeb', border:'#fcd34d', icon:'⚡', label:'KI-Analyse' },
+                    pruefpunkt_erstellt: { color:'#2563eb', bg:'#eff6ff', border:'#93c5fd', icon:'+', label:'Prüfpunkt hinzugefügt' },
+                    text_bearbeitet:     { color:'#7c3aed', bg:'#f5f3ff', border:'#c4b5fd', icon:'✎', label:'Text bearbeitet' },
+                    begehung_erstellt:   { color:'#6b7280', bg:'#f9fafb', border:'#e5e7eb', icon:'◎', label:'Begehung erstellt' },
+                  }[h.event_type] || { color:'#6b7280', bg:'#f9fafb', border:'#e5e7eb', icon:'•', label: h.event_type }
+
+                  const dt = new Date(h.created_at)
+                  const dateStr = dt.toLocaleDateString('de-AT') + ' · ' + dt.toLocaleTimeString('de-AT', { hour:'2-digit', minute:'2-digit' })
+
+                  return (
+                    <div key={h.id} style={{ marginBottom:12, position:'relative', cursor: h.event_type === 'protokoll_versendet' ? 'pointer' : 'default' }}
+                      onClick={() => h.event_type === 'protokoll_versendet' ? setHistoryDetail(h) : null}>
+                      <div style={{ position:'absolute', left:-20, top:8, width:12, height:12, borderRadius:'50%', background:cfg.color, border:'2px solid #fff', boxShadow:`0 0 0 1px ${cfg.color}` }} />
+                      <div style={{ background:cfg.bg, border:`0.5px solid ${cfg.border}`, borderRadius:10, padding:'10px 12px' }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:4 }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:cfg.color }}>{cfg.icon} {cfg.label}</span>
+                          <span style={{ fontSize:10, color:G.muted, flexShrink:0 }}>{dateStr}</span>
+                        </div>
+                        {h.event_type === 'protokoll_versendet' && (
+                          <div>
+                            <p style={{ fontSize:11, color:G.text, margin:'0 0 2px' }}>
+                              {h.meta?.recipient === 'ag_beide' ? 'Öffentlich + Intern an AG' : h.meta?.recipient === 'bauherr' ? 'Öffentlich an Bauherr' : 'Öffentlich an AG'}
+                            </p>
+                            <p style={{ fontSize:10, color:G.muted, margin:0 }}>An: {h.meta?.email || '–'}</p>
+                            {h.meta?.link_oeff && <p style={{ fontSize:10, color:'#2563eb', margin:'3px 0 0' }}>📄 PDF verfügbar</p>}
+                          </div>
+                        )}
+                        {h.event_type === 'ki_analyse' && (
+                          <p style={{ fontSize:11, color:G.text, margin:0 }}>{h.meta?.pruefpunkte_count || 0} Prüfpunkte analysiert</p>
+                        )}
+                        {h.event_type === 'text_bearbeitet' && (
+                          <p style={{ fontSize:11, color:G.text, margin:0 }}>„{h.meta?.titel || '–'}" – {h.meta?.type === 'oeffentlich' ? 'öffentlicher' : 'interner'} Text</p>
+                        )}
+                        {h.event_type === 'protokoll_versendet' && <p style={{ fontSize:10, color:G.muted, margin:'4px 0 0' }}>Tippen für Details →</p>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Detail Modal */}
+            {historyDetail && (
+              <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'flex-end', justifyContent:'center', zIndex:1000 }}
+                onClick={() => setHistoryDetail(null)}>
+                <div style={{ background:'#fff', borderRadius:'16px 16px 0 0', width:'100%', maxWidth:600, padding:0, maxHeight:'80vh', overflowY:'auto' }}
+                  onClick={e => e.stopPropagation()}>
+                  <div style={{ background:'#16a34a', padding:'14px 16px', borderRadius:'16px 16px 0 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <div>
+                      <p style={{ color:'#fff', fontSize:14, fontWeight:700, margin:0 }}>Protokoll versendet</p>
+                      <p style={{ color:'rgba(255,255,255,0.8)', fontSize:11, margin:'2px 0 0' }}>
+                        {new Date(historyDetail.created_at).toLocaleDateString('de-AT')} · {new Date(historyDetail.created_at).toLocaleTimeString('de-AT', { hour:'2-digit', minute:'2-digit' })} Uhr
+                      </p>
+                    </div>
+                    <button onClick={() => setHistoryDetail(null)} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:'50%', width:28, height:28, cursor:'pointer', fontSize:14 }}>✕</button>
+                  </div>
+                  <div style={{ padding:16 }}>
+                    {[
+                      ['Typ', historyDetail.meta?.recipient === 'ag_beide' ? 'Öffentlich + Intern' : historyDetail.meta?.recipient === 'bauherr' ? 'Öffentlich (Bauherr)' : 'Öffentlich (AG)'],
+                      ['An', historyDetail.meta?.email || '–'],
+                      ['Status', '✓ Erfolgreich gesendet'],
+                    ].map(([k,v]) => (
+                      <div key={k} style={{ display:'flex', gap:12, paddingBottom:8, borderBottom:`0.5px solid ${G.border}`, marginBottom:8 }}>
+                        <p style={{ fontSize:12, color:G.muted, fontWeight:600, minWidth:60, margin:0 }}>{k}</p>
+                        <p style={{ fontSize:12, color:G.text, fontWeight: k === 'Status' ? 700 : 400, margin:0 }}>{v}</p>
+                      </div>
+                    ))}
+                    {(historyDetail.meta?.link_oeff || historyDetail.meta?.link_intern) && (
+                      <div style={{ marginTop:12 }}>
+                        <p style={{ fontSize:11, color:G.muted, fontWeight:700, textTransform:'uppercase', margin:'0 0 8px' }}>PDF Links</p>
+                        {historyDetail.meta?.link_oeff && (
+                          <a href={historyDetail.meta.link_oeff} target="_blank" rel="noreferrer"
+                            style={{ display:'block', background:'#fef2f2', border:`0.5px solid ${G.accentBorder}`, borderRadius:8, padding:'10px 12px', marginBottom:6, textDecoration:'none', color:G.accent, fontSize:12, fontWeight:600 }}>
+                            📄 Öffentliches Protokoll herunterladen
+                          </a>
+                        )}
+                        {historyDetail.meta?.link_intern && (
+                          <a href={historyDetail.meta.link_intern} target="_blank" rel="noreferrer"
+                            style={{ display:'block', background:'#fff5f5', border:'0.5px solid #fca5a5', borderRadius:8, padding:'10px 12px', textDecoration:'none', color:'#7f1d1d', fontSize:12, fontWeight:600 }}>
+                            🔒 Internes Protokoll herunterladen
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {viewMode === 'intern' && (
           <div>
             {/* Export Buttons */}
