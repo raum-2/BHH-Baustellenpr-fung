@@ -744,7 +744,7 @@ function LoginScreen({ onLogin, inviteData, inviteToken }) {
     if (!form.email.trim()) { toast.error('Bitte E-Mail eingeben'); return }
     setLoading(true)
     const { error } = await sb.auth.resetPasswordForEmail(form.email, {
-      redirectTo: window.location.origin + '?reset=true',
+      redirectTo: 'https://bhh-baustellenpr-fung.vercel.app',
     })
     if (error) { toast.error(error.message); setLoading(false); return }
     setMode('reset_sent')
