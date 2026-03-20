@@ -2243,7 +2243,7 @@ function AdminPanel() {
       max_users: limits.max_users,
     }).eq('id', companyId)
     // Upsert subscription
-    const { data: existing } = await sb.from('company_subscriptions').select('id').eq('company_id', companyId).single()
+    const { data: existing } = await sb.from('company_subscriptions').select('id').eq('company_id', companyId).maybeSingle()
     if (existing) {
       await sb.from('company_subscriptions').update({ plan_id: newPlan, status: 'active' }).eq('company_id', companyId)
     } else {
