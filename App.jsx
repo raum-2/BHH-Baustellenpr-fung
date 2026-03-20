@@ -575,19 +575,39 @@ function OnboardingModal({ user, onComplete }) {
   async function handleSave() {
     if (!form.firma.trim()) { toast.error('Firmenname ist Pflicht'); return }
     setSaving(true)
-    const { error } = await sb.from('profiles').upsert({
+    // 1. Company anlegen
+    const { data: company, error: cErr } = await sb.from('companies').insert({
+      name: form.firma,
+      uid_nummer: form.uid_nummer,
+      adresse: form.firma_adresse,
+      email: user.email,
+      telefon: form.telefon,
+      plan: 'trial',
+      max_begehungen: 10,
+      max_users: 1,
+    }).select().single()
+    if (cErr) { toast.error('Firma konnte nicht angelegt werden: ' + cErr.message); setSaving(false); return }
+    // 2. Profile updaten mit company_id
+    const { error: pErr } = await sb.from('profiles').upsert({
       id: user.id,
       full_name: form.full_name,
       firma: form.firma,
       uid_nummer: form.uid_nummer,
       telefon: form.telefon,
       firma_adresse: form.firma_adresse,
+      company_id: company.id,
       onboarding_complete: true,
-      role: user?.user_metadata?.role || 'gutachter',
+      role: 'gutachter',
     })
-    if (error) { toast.error(error.message); setSaving(false); return }
-    toast.success('Firmendaten gespeichert!')
-    onComplete({ ...form, onboarding_complete: true })
+    if (pErr) { toast.error(pErr.message); setSaving(false); return }
+    // 3. Trial Subscription anlegen
+    await sb.from('company_subscriptions').insert({
+      company_id: company.id,
+      plan_id: 'trial',
+      status: 'active',
+    })
+    toast.success('Willkommen bei Bauherrenhilfe!')
+    onComplete({ ...form, company_id: company.id, onboarding_complete: true })
   }
 
   return (
@@ -849,7 +869,7 @@ function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading, on
 }
 
 // ─── Neue Begehung ───────────────────────────────────────────
-function NeueBegehung({ user, setPage, onCreated }) {
+function NeueBegehung({ user, profile, setPage, onCreated }) {
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -867,9 +887,12 @@ function NeueBegehung({ user, setPage, onCreated }) {
       return
     }
     setSaving(true)
+    // company_id aus eigenem Profil holen
+    const { data: myProfile } = await sb.from('profiles').select('company_id').eq('id', user.id).single()
     const { data, error } = await sb.from('begehungen').insert({
       ...form,
       user_id: user.id,
+      company_id: myProfile?.company_id || null,
       gesamtnote: null,
       status: 'erstellt',
     }).select().single()
@@ -2080,24 +2103,29 @@ function Projekte({ setPage, isSuperAdmin, userId }) {
 // ─── Admin Panel ─────────────────────────────────────────────
 function AdminPanel() {
   const now = new Date()
+  const [adminTab, setAdminTab] = useState('abrechnung')
   const [selMonth, setSelMonth] = useState(now.getMonth())
   const [selYear, setSelYear]   = useState(now.getFullYear())
   const [profiles, setProfiles] = useState([])
   const [begehungen, setBegehungen] = useState([])
+  const [companies, setCompanies] = useState([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
 
   const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
   const YEARS = [2025, 2026, 2027]
+  const PLANS = { trial:'Trial', s:'Paket S', m:'Paket M', l:'Paket L' }
 
   useEffect(() => {
     async function load() {
-      const [bRes, pRes] = await Promise.all([
+      const [bRes, pRes, cRes] = await Promise.all([
         sb.from('begehungen').select('id, titel, user_id, datum, status, auftraggeber_firma, auftraggeber_name').order('datum', { ascending:false }),
         sb.from('profiles').select('id, full_name, firma, uid_nummer, firma_adresse, telefon, email:id'),
+        sb.from('companies').select('*, company_subscriptions(plan_id, status)').order('created_at', { ascending:false }),
       ])
       setBegehungen(bRes.data || [])
       setProfiles(pRes.data || [])
+      setCompanies(cRes.data || [])
       setLoading(false)
     }
     load()
@@ -2176,14 +2204,96 @@ function AdminPanel() {
 
   if (loading) return <div style={{ padding:60, textAlign:'center', color:G.muted }}>Lädt…</div>
 
+  const companyBegehungen = (companyId) => begehungen.filter(b => {
+    const p = profiles.find(p => p.id === b.user_id)
+    return p?.company_id === companyId || companies.find(c => c.id === companyId)
+  }).length
+
   return (
     <div style={{ paddingBottom:100 }}>
-      <div style={{ background:G.accent, padding:'16px 20px' }}>
+      <div style={{ background:G.accent, padding:'14px 16px 0' }}>
         <p style={{ color:'rgba(255,255,255,0.7)', fontSize:11, margin:'0 0 2px' }}>Superadmin</p>
-        <p style={{ color:'#fff', fontSize:17, fontWeight:800, margin:0 }}>Abrechnung</p>
+        <p style={{ color:'#fff', fontSize:17, fontWeight:800, margin:'0 0 12px' }}>Admin Panel</p>
+        <div style={{ display:'flex', gap:0, overflowX:'auto', borderTop:'1px solid rgba(255,255,255,0.2)' }}>
+          {[['abrechnung','Abrechnung'],['companies','Firmen'],['nutzer','Nutzer']].map(([id,label]) => (
+            <button key={id} onClick={() => setAdminTab(id)}
+              style={{ padding:'10px 18px', border:'none', background:'transparent', color: adminTab===id ? '#fff' : 'rgba(255,255,255,0.6)', fontWeight: adminTab===id ? 700 : 400, fontSize:13, cursor:'pointer', borderBottom: adminTab===id ? '2px solid #fff' : '2px solid transparent', whiteSpace:'nowrap', flexShrink:0 }}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ padding:20 }}>
+
+      {/* ── Firmen Tab ── */}
+      {adminTab === 'companies' && (
+        <div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+            <div style={{ background:G.accentLight, border:`0.5px solid ${G.accentBorder}`, borderRadius:12, padding:14, textAlign:'center' }}>
+              <p style={{ fontSize:26, fontWeight:800, color:G.accent, margin:0 }}>{companies.length}</p>
+              <p style={{ fontSize:10, color:G.muted, fontWeight:700, textTransform:'uppercase', margin:'2px 0 0' }}>Firmen gesamt</p>
+            </div>
+            <div style={{ background:G.greenLight, border:`0.5px solid #86efac`, borderRadius:12, padding:14, textAlign:'center' }}>
+              <p style={{ fontSize:26, fontWeight:800, color:G.green, margin:0 }}>{companies.filter(c => c.company_subscriptions?.[0]?.status === 'active' && c.plan !== 'trial').length}</p>
+              <p style={{ fontSize:10, color:G.muted, fontWeight:700, textTransform:'uppercase', margin:'2px 0 0' }}>Zahlende Kunden</p>
+            </div>
+          </div>
+
+          {companies.map(c => {
+            const plan = c.company_subscriptions?.[0]?.plan_id || c.plan || 'trial'
+            const userCount = profiles.filter(p => p.company_id === c.id).length
+            const begCount = begehungen.filter(b => {
+              const p = profiles.find(p => p.id === b.user_id)
+              return p?.company_id === c.id
+            }).length
+            return (
+              <div key={c.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14, marginBottom:10 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px' }}>{c.name}</p>
+                    <p style={{ fontSize:11, color:G.muted, margin:0 }}>{c.email} {c.uid_nummer ? '· ' + c.uid_nummer : ''}</p>
+                  </div>
+                  <span style={{ fontSize:11, fontWeight:700, background: plan === 'trial' ? '#f3f4f6' : G.accentLight, color: plan === 'trial' ? G.muted : G.accent, borderRadius:6, padding:'3px 9px', flexShrink:0 }}>
+                    {PLANS[plan] || plan}
+                  </span>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
+                  {[['Nutzer', userCount],['Begehungen', begCount],['Max Beg.', c.max_begehungen || 10]].map(([k,v]) => (
+                    <div key={k} style={{ background:'#f9fafb', borderRadius:7, padding:'6px 8px', textAlign:'center' }}>
+                      <p style={{ fontSize:14, fontWeight:800, color:G.text, margin:0 }}>{v}</p>
+                      <p style={{ fontSize:9, color:G.muted, textTransform:'uppercase', margin:0 }}>{k}</p>
+                    </div>
+                  ))}
+                </div>
+                {c.adresse && <p style={{ fontSize:11, color:G.muted, margin:'8px 0 0' }}>{c.adresse}</p>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Nutzer Tab ── */}
+      {adminTab === 'nutzer' && (
+        <div>
+          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 12px' }}>{profiles.length} registrierte Nutzer</p>
+          {profiles.map(p => (
+            <div key={p.id} style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:14, marginBottom:8 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                <div>
+                  <p style={{ fontWeight:700, fontSize:13, margin:'0 0 2px' }}>{p.full_name || '–'}</p>
+                  <p style={{ fontSize:11, color:G.muted, margin:0 }}>{p.firma || '–'}</p>
+                </div>
+                <span style={{ fontSize:11, fontWeight:700, background: p.role === 'superadmin' ? G.accentLight : '#f3f4f6', color: p.role === 'superadmin' ? G.accent : G.muted, borderRadius:6, padding:'3px 9px' }}>
+                  {p.role || 'gutachter'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adminTab === 'abrechnung' && <div>
         {/* Monat/Jahr Auswahl */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
           <div>
@@ -2257,6 +2367,8 @@ function AdminPanel() {
             </div>
           ))}
         </div>
+      </div>}
+
       </div>
     </div>
   )
@@ -2287,8 +2399,12 @@ function App() {
   }, [])
 
   async function loadData(u) {
+    const role = (await sb.from('profiles').select('role,company_id').eq('id', u.id).single()).data
+    const isSA = role?.role === 'superadmin'
     const [bRes, prjRes, profileRes] = await Promise.all([
-      sb.from('begehungen').select('*').eq('user_id', u.id).order('created_at', { ascending:false }),
+      isSA
+        ? sb.from('begehungen').select('*').order('created_at', { ascending:false })
+        : sb.from('begehungen').select('*').eq('company_id', role?.company_id).order('created_at', { ascending:false }),
       sb.from('projekte').select('count', { count:'exact', head:true }),
       sb.from('profiles').select('*').eq('id', u.id).single(),
     ])
@@ -2343,7 +2459,7 @@ function App() {
     switch (page) {
       case 'dashboard':      return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
       case 'begehungen':     return <BegehungenListe setPage={setPage} setSelectedBegehung={setSelectedBegehung} begehungen={begehungen} loading={false} onDelete={id => setBegehungen(prev => prev.filter(b => b.id !== id))} />
-      case 'neueBegehung':   return <NeueBegehung user={user} setPage={setPage} onCreated={handleBegehungCreated} />
+      case 'neueBegehung':   return <NeueBegehung user={user} profile={profile} setPage={setPage} onCreated={handleBegehungCreated} />
       case 'begehungDetail': return selectedBegehung ? <BegehungDetail begehung={selectedBegehung} setPage={setPage} user={user} /> : null
       case 'projekte':       return <Projekte setPage={setPage} isSuperAdmin={isSuperAdmin} userId={user?.id} />
       case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} onLogout={async () => { await sb.auth.signOut(); setUser(null); setProfile(null); }} />
