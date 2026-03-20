@@ -670,9 +670,9 @@ function OnboardingModal({ user, onComplete }) {
 }
 
 // ─── Auth ────────────────────────────────────────────────────
-function LoginScreen({ onLogin }) {
-  const [mode, setMode] = useState('login')
-  const [form, setForm] = useState({ email:'', password:'', name:'', role:'gutachter' })
+function LoginScreen({ onLogin, inviteData, inviteToken }) {
+  const [mode, setMode] = useState(inviteData ? 'register' : 'login')
+  const [form, setForm] = useState({ email: inviteData?.email || '', password:'', name:'', role: inviteData?.role || 'gutachter' })
   const [loading, setLoading] = useState(false)
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -688,9 +688,25 @@ function LoginScreen({ onLogin }) {
     e.preventDefault()
     setLoading(true)
     const { data, error } = await sb.auth.signUp({ email: form.email, password: form.password,
-      options: { data: { full_name: form.name, role: form.role } } })
+      options: { data: { full_name: form.name, role: inviteData?.role || form.role } } })
     if (error) { toast.error(error.message); setLoading(false); return }
-    toast.success('Registrierung erfolgreich! Bitte E-Mail bestätigen.')
+    // Mark invite as used + link to company
+    if (inviteToken && inviteData) {
+      await sb.from('invitations').update({ used: true }).eq('token', inviteToken)
+      // Profile will be created by onboarding, but pre-set company_id
+      if (data?.user?.id) {
+        await sb.from('profiles').upsert({
+          id: data.user.id,
+          company_id: inviteData.company_id,
+          firma: inviteData.companies?.name || '',
+          role: inviteData.role || 'gutachter',
+          onboarding_complete: false,
+        })
+      }
+      toast.success('Konto erstellt! Bitte vollständige Profildaten eingeben.')
+    } else {
+      toast.success('Registrierung erfolgreich!')
+    }
     setMode('login')
     setLoading(false)
   }
@@ -2107,6 +2123,144 @@ function ImpressumPage({ setPage }) {
   )
 }
 
+// ─── Nutzer Einladen ─────────────────────────────────────────
+function TeamPage({ user, profile, setPage }) {
+  const [members, setMembers] = useState([])
+  const [invitations, setInvitations] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('gutachter')
+  const [sending, setSending] = useState(false)
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const companyId = profile?.company_id
+    if (!companyId) { setLoading(false); return }
+    const [mRes, iRes] = await Promise.all([
+      sb.from('profiles').select('id, full_name, firma, role, telefon').eq('company_id', companyId),
+      sb.from('invitations').select('*').eq('company_id', companyId).eq('used', false).order('created_at', { ascending: false }),
+    ])
+    setMembers(mRes.data || [])
+    setInvitations(iRes.data || [])
+    setLoading(false)
+  }
+
+  async function sendInvite() {
+    if (!inviteEmail.trim()) { toast.error('E-Mail Pflicht'); return }
+    setSending(true)
+    const token = crypto.randomUUID().replace(/-/g, '')
+    const { error } = await sb.from('invitations').insert({
+      company_id: profile.company_id,
+      email: inviteEmail.trim().toLowerCase(),
+      token,
+      role: inviteRole,
+      invited_by: user.id,
+    })
+    if (error) { toast.error(error.message); setSending(false); return }
+
+    // Send invite email
+    const inviteLink = window.location.origin + '?invite=' + token
+    const res = await fetch('/api/send-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: inviteEmail.trim(),
+        inviterName: profile.full_name || 'Ihr Team',
+        companyName: profile.firma || 'Bauherrenhilfe',
+        inviteLink,
+      }),
+    })
+    if (!res.ok) { toast.error('E-Mail konnte nicht gesendet werden'); setSending(false); return }
+    toast.success('Einladung gesendet!')
+    setInviteEmail('')
+    setSending(false)
+    load()
+  }
+
+  async function revokeInvite(id) {
+    await sb.from('invitations').delete().eq('id', id)
+    setInvitations(prev => prev.filter(i => i.id !== id))
+    toast.success('Einladung widerrufen')
+  }
+
+  const plan = profile?.plan || 'trial'
+  const maxUsers = { trial:1, s:3, m:10, l:50 }[plan] || 1
+
+  return (
+    <div style={{ paddingBottom:100 }}>
+      <div style={{ background:G.accent, padding:'14px 16px', display:'flex', alignItems:'center', gap:10 }}>
+        <button onClick={() => setPage('profil')} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'#fff', borderRadius:8, width:32, height:32, fontSize:18, cursor:'pointer', flexShrink:0 }}>←</button>
+        <div>
+          <p style={{ color:'#fff', fontSize:16, fontWeight:800, margin:0 }}>Team verwalten</p>
+          <p style={{ color:'rgba(255,255,255,0.7)', fontSize:11, margin:'2px 0 0' }}>{profile?.firma} · {members.length}/{maxUsers} Nutzer</p>
+        </div>
+      </div>
+
+      <div style={{ padding:16 }}>
+        {/* Aktive Nutzer */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
+          <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 10px' }}>Aktive Nutzer</p>
+          {loading ? <p style={{ color:G.muted, fontSize:13 }}>Lädt…</p> : members.map(m => (
+            <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:`0.5px solid ${G.border}` }}>
+              <div style={{ width:36, height:36, borderRadius:'50%', background:G.accentLight, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:14, color:G.accent, flexShrink:0 }}>
+                {(m.full_name || '?')[0].toUpperCase()}
+              </div>
+              <div style={{ flex:1 }}>
+                <p style={{ fontSize:13, fontWeight:600, color:G.text, margin:0 }}>{m.full_name || '–'}</p>
+                <p style={{ fontSize:11, color:G.muted, margin:0 }}>{m.role || 'gutachter'}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Einladen */}
+        {members.length < maxUsers ? (
+          <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
+            <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 10px' }}>Neuen Nutzer einladen</p>
+            <label style={lbl}>E-Mail Adresse *</label>
+            <input style={inp} value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="sv@beispiel.at" type="email" />
+            <label style={lbl}>Rolle</label>
+            <select style={inp} value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
+              <option value="gutachter">Sachverständiger</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button onClick={sendInvite} disabled={sending}
+              style={{ width:'100%', background:G.accent, border:'none', borderRadius:9, padding:'12px', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              {sending ? <span className="spinner"/> : '✉️'} Einladung senden
+            </button>
+          </div>
+        ) : (
+          <div style={{ background:G.accentLight, border:`0.5px solid ${G.accentBorder}`, borderRadius:12, padding:16, marginBottom:12 }}>
+            <p style={{ fontSize:13, fontWeight:700, color:G.accent, margin:'0 0 4px' }}>Nutzerlimit erreicht</p>
+            <p style={{ fontSize:12, color:G.muted, margin:0 }}>Ihr Paket erlaubt max. {maxUsers} Nutzer. Upgrade für mehr Nutzer.</p>
+          </div>
+        )}
+
+        {/* Offene Einladungen */}
+        {invitations.length > 0 && (
+          <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16 }}>
+            <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 10px' }}>Offene Einladungen</p>
+            {invitations.map(inv => (
+              <div key={inv.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:`0.5px solid ${G.border}` }}>
+                <div style={{ flex:1 }}>
+                  <p style={{ fontSize:13, color:G.text, margin:0 }}>{inv.email}</p>
+                  <p style={{ fontSize:10, color:G.muted, margin:0 }}>Gültig bis {new Date(inv.expires_at).toLocaleDateString('de-AT')}</p>
+                </div>
+                <button onClick={() => revokeInvite(inv.id)}
+                  style={{ background:'#fef2f2', border:`0.5px solid ${G.accentBorder}`, borderRadius:7, padding:'5px 10px', fontSize:11, color:G.accent, cursor:'pointer' }}>
+                  Widerrufen
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Profil / Einstellungen ──────────────────────────────────
 function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
   const [editMode, setEditMode] = useState(false)
@@ -2333,6 +2487,14 @@ function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
               </button>
             </div>
           )}
+        </div>
+
+        {/* Team */}
+        <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
+          <button onClick={() => onSetPage('team')}
+            style={{ width:'100%', background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'11px', fontSize:13, fontWeight:600, color:G.text, cursor:'pointer' }}>
+            👥 Team verwalten & Nutzer einladen
+          </button>
         </div>
 
         {/* Impressum & Datenschutz */}
@@ -2930,6 +3092,7 @@ function App() {
       case 'profil':         return <ProfilSettings user={user} profile={profile} onUpdate={data => setProfile(p => ({...p, ...data}))} onLogout={async () => { await sb.auth.signOut(); setUser(null); setProfile(null); }} onSetPage={setPage} />
       case 'impressum':      return <ImpressumPage setPage={setPage} />
       case 'agb':            return <AGBPage setPage={setPage} />
+      case 'team':           return <TeamPage user={user} profile={profile} setPage={setPage} />
       case 'admin':          return <AdminPanel />
       default:               return <Dashboard user={user} profile={profile} setPage={setPage} stats={stats} setSelectedBegehung={setSelectedBegehung} isSuperAdmin={isSuperAdmin} role={role} />
     }
