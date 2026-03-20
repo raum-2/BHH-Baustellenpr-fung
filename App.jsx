@@ -2226,6 +2226,33 @@ function AdminPanel() {
   const MONTHS = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
   const YEARS = [2025, 2026, 2027]
   const PLANS = { trial:'Trial', s:'Paket S', m:'Paket M', l:'Paket L' }
+  const PLAN_LIMITS = {
+    trial: { max_begehungen: 10, max_users: 1 },
+    s:     { max_begehungen: 20, max_users: 3 },
+    m:     { max_begehungen: 75, max_users: 10 },
+    l:     { max_begehungen: 999, max_users: 50 },
+  }
+  const [editingPlan, setEditingPlan] = useState(null) // company id being edited
+
+  async function changePlan(companyId, newPlan) {
+    const limits = PLAN_LIMITS[newPlan]
+    // Update company
+    await sb.from('companies').update({
+      plan: newPlan,
+      max_begehungen: limits.max_begehungen,
+      max_users: limits.max_users,
+    }).eq('id', companyId)
+    // Upsert subscription
+    const { data: existing } = await sb.from('company_subscriptions').select('id').eq('company_id', companyId).single()
+    if (existing) {
+      await sb.from('company_subscriptions').update({ plan_id: newPlan, status: 'active' }).eq('company_id', companyId)
+    } else {
+      await sb.from('company_subscriptions').insert({ company_id: companyId, plan_id: newPlan, status: 'active' })
+    }
+    setCompanies(prev => prev.map(c => c.id === companyId ? { ...c, plan: newPlan, max_begehungen: limits.max_begehungen, max_users: limits.max_users, company_subscriptions: [{ plan_id: newPlan, status: 'active' }] } : c))
+    setEditingPlan(null)
+    toast.success('Plan geändert auf ' + PLANS[newPlan])
+  }
 
   useEffect(() => {
     async function load() {
@@ -2377,9 +2404,24 @@ function AdminPanel() {
                     <p style={{ fontWeight:700, fontSize:14, margin:'0 0 2px' }}>{c.name}</p>
                     <p style={{ fontSize:11, color:G.muted, margin:0 }}>{c.email} {c.uid_nummer ? '· ' + c.uid_nummer : ''}</p>
                   </div>
-                  <span style={{ fontSize:11, fontWeight:700, background: plan === 'trial' ? '#f3f4f6' : G.accentLight, color: plan === 'trial' ? G.muted : G.accent, borderRadius:6, padding:'3px 9px', flexShrink:0 }}>
-                    {PLANS[plan] || plan}
-                  </span>
+                  {editingPlan === c.id ? (
+                    <div style={{ display:'flex', gap:4', flexWrap:'wrap', justifyContent:'flex-end' }}>
+                      {Object.entries(PLANS).map(([key, label]) => (
+                        <button key={key} onClick={() => changePlan(c.id, key)}
+                          style={{ fontSize:10, fontWeight:700, background: key === plan ? G.accent : '#f3f4f6', color: key === plan ? '#fff' : G.muted, border:'none', borderRadius:5, padding:'4px 8px', cursor:'pointer' }}>
+                          {label}
+                        </button>
+                      ))}
+                      <button onClick={() => setEditingPlan(null)}
+                        style={{ fontSize:10, background:'transparent', border:'none', color:G.muted, cursor:'pointer' }}>✕</button>
+                    </div>
+                  ) : (
+                    <span onClick={() => setEditingPlan(c.id)}
+                      style={{ fontSize:11, fontWeight:700, background: plan === 'trial' ? '#f3f4f6' : G.accentLight, color: plan === 'trial' ? G.muted : G.accent, borderRadius:6, padding:'3px 9px', flexShrink:0, cursor:'pointer', userSelect:'none' }}
+                      title="Klicken zum Ändern">
+                      {PLANS[plan] || plan} ✏️
+                    </span>
+                  )}
                 </div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6 }}>
                   {[
