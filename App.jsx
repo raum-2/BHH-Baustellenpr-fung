@@ -680,6 +680,21 @@ function PasswordResetScreen({ onDone }) {
     if (password.length < 8) { toast.error('Mindestens 8 Zeichen'); return }
     if (password !== confirm) { toast.error('Passwörter stimmen nicht überein'); return }
     setLoading(true)
+    // Ensure session is set from URL hash (Supabase PKCE flow)
+    const { data: sessionData } = await sb.auth.getSession()
+    if (!sessionData?.session) {
+      // Try exchanging code from URL hash
+      const hashParams = new URLSearchParams(window.location.hash.slice(1))
+      const accessToken = hashParams.get('access_token')
+      const refreshToken = hashParams.get('refresh_token')
+      if (accessToken) {
+        await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+      } else {
+        toast.error('Session abgelaufen. Bitte neuen Reset-Link anfordern.')
+        setLoading(false)
+        return
+      }
+    }
     const { error } = await sb.auth.updateUser({ password })
     if (error) { toast.error(error.message); setLoading(false); return }
     toast.success('Passwort erfolgreich geändert!')
@@ -3158,6 +3173,13 @@ function App() {
     // Check URL hash for auth redirects
     const hash = window.location.hash
     if (hash.includes('type=recovery')) {
+      // Extract tokens before clearing hash - needed for setSession
+      const hashParams = new URLSearchParams(hash.slice(1))
+      const accessToken = hashParams.get('access_token')
+      const refreshToken = hashParams.get('refresh_token')
+      if (accessToken) {
+        sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+      }
       setShowPasswordReset(true)
       window.history.replaceState({}, '', window.location.pathname)
     } else if (hash.includes('error=access_denied') || hash.includes('otp_expired')) {
