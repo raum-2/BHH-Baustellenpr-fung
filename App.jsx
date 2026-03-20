@@ -2405,7 +2405,7 @@ function AdminPanel() {
                     <p style={{ fontSize:11, color:G.muted, margin:0 }}>{c.email} {c.uid_nummer ? '· ' + c.uid_nummer : ''}</p>
                   </div>
                   {editingPlan === c.id ? (
-                    <div style={{ display:'flex', gap:4', flexWrap:'wrap', justifyContent:'flex-end' }}>
+                    <div style={{ display:'flex', gap:4, flexWrap:'wrap', justifyContent:'flex-end' }}>
                       {Object.entries(PLANS).map(([key, label]) => (
                         <button key={key} onClick={() => changePlan(c.id, key)}
                           style={{ fontSize:10, fontWeight:700, background: key === plan ? G.accent : '#f3f4f6', color: key === plan ? '#fff' : G.muted, border:'none', borderRadius:5, padding:'4px 8px', cursor:'pointer' }}>
