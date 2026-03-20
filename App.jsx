@@ -2143,15 +2143,17 @@ function AdminPanel() {
   for (const p of profiles) profileMap[p.id] = p
 
   // Immer nach auftraggeber_firma gruppieren
-  const byFirma = {}
+  // Gruppieren nach SV-Firma (wer hat die Begehung gemacht)
+  const byCompany = {}
   for (const b of filtered) {
-    const key = b.auftraggeber_firma || profileMap[b.user_id]?.firma || '–'
-    if (!byFirma[key]) byFirma[key] = { firma: key, user_id: b.user_id, list: [] }
-    byFirma[key].list.push(b)
+    const profile = profileMap[b.user_id]
+    const svFirma = profile?.firma || profile?.full_name || b.user_id || '–'
+    if (!byCompany[svFirma]) byCompany[svFirma] = { firma: svFirma, user_id: b.user_id, profile, list: [] }
+    byCompany[svFirma].list.push(b)
   }
 
-  const rows = Object.values(byFirma).map(entry => ({
-    profile: profileMap[entry.user_id] || { full_name: '', firma: entry.firma },
+  const rows = Object.values(byCompany).map(entry => ({
+    profile: entry.profile || { full_name: entry.firma, firma: entry.firma },
     firma: entry.firma,
     count: entry.list.length,
   })).sort((a, b) => b.count - a.count)
