@@ -131,7 +131,7 @@ async function trackUsage(companyId, userId, eventType, meta = {}) {
   } catch(e) { /* silent fail */ }
 }
 
-async function generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl, creatorName }) {
+async function generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl, stempelSizeMm, creatorName }) {
   const JsPDF = await loadJsPDF()
   const doc = new JsPDF({ unit: 'mm', format: 'a4' })
   const pW = 210, pH = 297, ml = 18, mr = 18, cW = pW - ml - mr
@@ -442,14 +442,23 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
 
   if (stempelUrl) {
     try {
-      const stempelB64 = await imgToBase64(stempelUrl)
+      const stempelB64 = await imgToBase64(stempelUrl, 400, 0.9)
       if (stempelB64) {
-        doc.addImage(stempelB64, 'PNG', stampX, y + 3, stampW, 25)
+        const sizeMm = stempelSizeMm || 50
+        // Keep aspect ratio
+        const sImg = new Image()
+        await new Promise(res => { sImg.onload = res; sImg.onerror = res; sImg.src = stempelB64 })
+        const aspect = sImg.naturalHeight / (sImg.naturalWidth || 1)
+        const sW = sizeMm
+        const sH = Math.min(sW * aspect, 35)
+        doc.addImage(stempelB64, 'PNG', stampX, y + 3, sW, sH)
       }
     } catch(e) {
       doc.setDrawColor(...borderGray)
       doc.setLineWidth(0.3)
+      doc.setLineDashPattern([1, 1], 0)
       doc.rect(stampX, y + 3, stampW, 25, 'S')
+      doc.setLineDashPattern([], 0)
     }
   } else {
     doc.setDrawColor(...borderGray)
@@ -1256,7 +1265,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
 
       // PDF generieren + in Supabase hochladen für Download-Link
       async function uploadPDF(type) {
-        const d = await generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl: null, creatorName: begehung.sachverstaendiger })
+        const { data: svProf } = await sb.from('profiles').select('stempel_url, stempel_size_mm').eq('id', begehung.user_id || '').maybeSingle()
+        const d = await generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl: svProf?.stempel_url || null, stempelSizeMm: svProf?.stempel_size_mm || 50, creatorName: begehung.sachverstaendiger })
         const blob = d.output('blob')
         const path = 'protokolle/' + begehung.id + '_' + type + '_' + Date.now() + '.pdf'
         await sb.storage.from('bhh-photos').upload(path, blob, { contentType: 'application/pdf', upsert: true })
@@ -1451,12 +1461,15 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   async function exportPDF(type) {
     toast.loading('PDF wird erstellt…', { id: 'pdf' })
     try {
+      // Load stempel from profile
+      const { data: svProfile } = await sb.from('profiles').select('stempel_url, stempel_size_mm').eq('id', begehung.user_id || '').maybeSingle()
       const doc = await generateProtokollPDF({
         type,
         begehung,
         punkte,
         getEditedText,
-        stempelUrl: null,
+        stempelUrl: svProfile?.stempel_url || null,
+        stempelSizeMm: svProfile?.stempel_size_mm || 50,
         creatorName: begehung.sachverstaendiger,
       })
       doc.save('Protokoll_' + (type === 'oeffentlich' ? 'Oeffentlich' : 'Intern') + '_' + (begehung.titel || 'Begehung').replace(/[^a-zA-Z0-9]/g, '_') + '.pdf')
@@ -1908,10 +1921,16 @@ function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
     telefon: profile?.telefon || '',
     firma_adresse: profile?.firma_adresse || '',
   })
-  const [stempelFile, setStempelFile] = useState(null)
   const [stempelPreview, setStempelPreview] = useState(profile?.stempel_url || null)
+  const [cropMode, setCropMode] = useState(false)
+  const [cropImg, setCropImg] = useState(null)
+  const [cropData, setCropData] = useState({ x:0, y:0, w:1, h:1 }) // normalized 0-1
+  const [stempelSize, setStempelSize] = useState(60) // mm on PDF
+  const [rotation, setRotation] = useState(0)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef()
+  const canvasRef = useRef()
+  const cropCanvasRef = useRef()
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function saveProfile() {
@@ -1924,29 +1943,57 @@ function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
     setSaving(false)
   }
 
-  async function handleStempelUpload(file) {
+  function handleStempelUpload(file) {
     if (!file) return
     const reader = new FileReader()
-    reader.onload = e => setStempelPreview(e.target.result)
+    reader.onload = e => {
+      setCropImg(e.target.result)
+      setCropMode(true)
+      setRotation(0)
+    }
     reader.readAsDataURL(file)
-    setStempelFile(file)
   }
 
-  async function saveStempel() {
-    if (!stempelFile) return
-    setSaving(true)
-    const ext = stempelFile.type.split('/')[1]?.replace('jpeg','jpg') || 'png'
-    const path = user.id + '/stempel.' + ext
-    const buffer = await stempelFile.arrayBuffer()
-    const { error } = await sb.storage.from('bhh-photos').upload(path, buffer, { contentType: stempelFile.type, upsert: true })
-    if (error) { toast.error(error.message); setSaving(false); return }
-    const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
-    const url = data?.publicUrl
-    await sb.from('profiles').update({ stempel_url: url }).eq('id', user.id)
-    onUpdate({ stempel_url: url })
-    setStempelFile(null)
-    toast.success('Stempel gespeichert!')
-    setSaving(false)
+  function applyAndSave() {
+    const img = new Image()
+    img.onload = async () => {
+      const canvas = document.createElement('canvas')
+      const size = 400
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      ctx.save()
+      ctx.translate(size/2, size/2)
+      ctx.rotate(rotation * Math.PI / 180)
+      ctx.translate(-size/2, -size/2)
+      // Draw cropped region
+      const sx = cropData.x * img.width
+      const sy = cropData.y * img.height
+      const sw = cropData.w * img.width
+      const sh = cropData.h * img.height
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size)
+      ctx.restore()
+      canvas.toBlob(async (blob) => {
+        setSaving(true)
+        // Preview
+        const previewUrl = URL.createObjectURL(blob)
+        setStempelPreview(previewUrl)
+        setCropMode(false)
+        // Upload
+        const path = user.id + '/stempel.png'
+        const buffer = await blob.arrayBuffer()
+        const { error } = await sb.storage.from('bhh-photos').upload(path, buffer, { contentType: 'image/png', upsert: true })
+        if (error) { toast.error(error.message); setSaving(false); return }
+        const { data } = sb.storage.from('bhh-photos').getPublicUrl(path)
+        const url = data?.publicUrl + '?t=' + Date.now()
+        await sb.from('profiles').update({ stempel_url: url, stempel_size_mm: stempelSize }).eq('id', user.id)
+        onUpdate({ stempel_url: url, stempel_size_mm: stempelSize })
+        setStempelPreview(url)
+        setSaving(false)
+        toast.success('Stempel gespeichert!')
+      }, 'image/png')
+    }
+    img.src = cropImg
   }
 
   return (
@@ -2011,34 +2058,83 @@ function ProfilSettings({ user, profile, onUpdate, onLogout, onSetPage }) {
           )}
         </div>
 
-        {/* Stempel Upload */}
+        {/* Stempel Upload + Crop */}
         <div style={{ background:'#fff', border:`0.5px solid ${G.border}`, borderRadius:12, padding:16, marginBottom:12 }}>
           <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 4px' }}>Stempel & Unterschrift</p>
           <p style={{ fontSize:12, color:G.muted, margin:'0 0 12px' }}>Wird auf allen PDFs angezeigt. PNG mit transparentem Hintergrund empfohlen.</p>
           <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={e => handleStempelUpload(e.target.files[0])} />
-          {stempelPreview ? (
-            <div style={{ marginBottom:10, background:'#f9fafb', borderRadius:8, padding:10, border:`0.5px solid ${G.border}` }}>
-              <img src={stempelPreview} alt="Stempel" style={{ maxWidth:'100%', maxHeight:100, objectFit:'contain', display:'block', margin:'0 auto' }} />
+
+          {cropMode && cropImg ? (
+            <div>
+              {/* Crop Preview */}
+              <div style={{ background:'#f0f0f0', borderRadius:10, padding:10, marginBottom:10, textAlign:'center', position:'relative' }}>
+                <img src={cropImg} alt="crop"
+                  style={{ maxWidth:'100%', maxHeight:220, objectFit:'contain', display:'block', margin:'0 auto',
+                    transform: `rotate(${rotation}deg)`,
+                    transition:'transform .2s' }} />
+              </div>
+              {/* Rotation */}
+              <div style={{ marginBottom:10 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                  <p style={{ fontSize:11, fontWeight:600, color:G.text, margin:0 }}>Drehen</p>
+                  <p style={{ fontSize:11, color:G.muted, margin:0 }}>{rotation}°</p>
+                </div>
+                <input type="range" min="-180" max="180" step="1" value={rotation}
+                  onChange={e => setRotation(+e.target.value)}
+                  style={{ width:'100%' }} />
+                <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                  {[-90, 0, 90].map(r => (
+                    <button key={r} onClick={() => setRotation(r)}
+                      style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:7, padding:'6px', fontSize:11, cursor:'pointer', fontWeight: rotation===r ? 700 : 400, color: rotation===r ? G.accent : G.text }}>
+                      {r === -90 ? '↺ -90°' : r === 0 ? '0°' : '↻ +90°'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Size */}
+              <div style={{ marginBottom:12 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
+                  <p style={{ fontSize:11, fontWeight:600, color:G.text, margin:0 }}>Größe auf PDF</p>
+                  <p style={{ fontSize:11, color:G.muted, margin:0 }}>{stempelSize} mm</p>
+                </div>
+                <input type="range" min="30" max="100" step="5" value={stempelSize}
+                  onChange={e => setStempelSize(+e.target.value)}
+                  style={{ width:'100%' }} />
+              </div>
+              {/* Buttons */}
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => setCropMode(false)}
+                  style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'10px', fontSize:12, fontWeight:600, color:G.muted, cursor:'pointer' }}>
+                  Abbrechen
+                </button>
+                <button onClick={applyAndSave} disabled={saving}
+                  style={{ flex:2, background:G.accent, border:'none', borderRadius:9, padding:'10px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                  {saving ? <span className="spinner"/> : '✓'} Speichern
+                </button>
+              </div>
             </div>
           ) : (
-            <div onClick={() => fileRef.current?.click()}
-              style={{ border:`1.5px dashed ${G.border}`, borderRadius:10, padding:20, textAlign:'center', cursor:'pointer', marginBottom:10, background:'#f9fafb' }}>
-              <p style={{ fontSize:13, color:G.muted, margin:0 }}>Bild auswählen</p>
-              <p style={{ fontSize:11, color:G.muted, margin:'3px 0 0' }}>PNG empfohlen · max. 5MB</p>
+            <div>
+              {stempelPreview && (
+                <div style={{ background:'#f9fafb', borderRadius:10, padding:12, marginBottom:10, border:`0.5px solid ${G.border}`, textAlign:'center' }}>
+                  <img src={stempelPreview} alt="Stempel"
+                    style={{ maxWidth:'100%', maxHeight:100, objectFit:'contain', display:'block', margin:'0 auto' }} />
+                  <p style={{ fontSize:10, color:G.muted, margin:'6px 0 0' }}>Größe auf PDF: {profile?.stempel_size_mm || stempelSize} mm</p>
+                </div>
+              )}
+              {!stempelPreview && (
+                <div onClick={() => fileRef.current?.click()}
+                  style={{ border:`1.5px dashed ${G.border}`, borderRadius:10, padding:20, textAlign:'center', cursor:'pointer', marginBottom:10, background:'#f9fafb' }}>
+                  <p style={{ fontSize:13, color:G.muted, margin:0 }}>Bild auswählen</p>
+                  <p style={{ fontSize:11, color:G.muted, margin:'3px 0 0' }}>PNG empfohlen · transparenter Hintergrund</p>
+                </div>
+              )}
+              <button onClick={() => fileRef.current?.click()}
+                style={{ width:'100%', background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'10px', fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
+                {stempelPreview ? '↺ Neues Bild hochladen' : 'Bild wählen'}
+              </button>
             </div>
           )}
-          <div style={{ display:'flex', gap:8 }}>
-            <button onClick={() => fileRef.current?.click()}
-              style={{ flex:1, background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:9, padding:'10px', fontSize:12, fontWeight:600, color:G.text, cursor:'pointer' }}>
-              {stempelPreview ? 'Anderes Bild' : 'Bild wählen'}
-            </button>
-            {stempelFile && (
-              <button onClick={saveStempel} disabled={saving}
-                style={{ flex:2, background:G.accent, border:'none', borderRadius:9, padding:'10px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {saving ? <span className="spinner"/> : null} Speichern
-              </button>
-            )}
-          </div>
         </div>
 
         {/* Impressum & Datenschutz */}
