@@ -118,6 +118,19 @@ async function loadJsPDF() {
   return window.jspdf.jsPDF
 }
 
+// ─── Usage Tracking ─────────────────────────────────────────
+async function trackUsage(companyId, userId, eventType, meta = {}) {
+  if (!companyId) return
+  try {
+    await sb.from('usage_events').insert({
+      company_id: companyId,
+      user_id: userId,
+      event_type: eventType,
+      meta,
+    })
+  } catch(e) { /* silent fail */ }
+}
+
 async function generateProtokollPDF({ type, begehung, punkte, getEditedText, stempelUrl, creatorName }) {
   const JsPDF = await loadJsPDF()
   const doc = new JsPDF({ unit: 'mm', format: 'a4' })
@@ -900,6 +913,8 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
       status: 'erstellt',
     }).select().single()
     if (error) { toast.error(error.message); setSaving(false); return }
+    // Usage tracken
+    await trackUsage(myProfile?.company_id, user.id, 'begehung_erstellt', { titel: form.titel })
     toast.success('Begehung angelegt!')
     onCreated(data)
     setPage('begehungDetail')
@@ -1023,6 +1038,11 @@ function PruefpunktModal({ begehungId, punkt, onSave, onClose }) {
             return { ...f, fotos }
           })
           toast.success('KI-Analyse abgeschlossen')
+      // Usage tracken
+      try {
+        const { data: prof2 } = await sb.from('profiles').select('company_id').eq('id', begehung?.user_id || '').maybeSingle()
+        if (prof2?.company_id) await trackUsage(prof2.company_id, begehung?.user_id, 'ki_analyse')
+      } catch(e) {}
         } catch (e) {
           console.warn('KI Analyse fehlgeschlagen:', e)
         }
@@ -1262,6 +1282,11 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         throw new Error(errData.error || 'Versand fehlgeschlagen')
       }
       toast.dismiss('pdf-send')
+      // Usage tracken
+      try {
+        const { data: prof3 } = await sb.from('profiles').select('company_id').eq('id', begehung?.user_id || '').maybeSingle()
+        if (prof3?.company_id) await trackUsage(prof3.company_id, begehung?.user_id, 'protokoll_versendet', { recipient })
+      } catch(e) {}
       if (recipient === 'ag_beide') toast.success('E-Mail + PDFs versendet & heruntergeladen!')
       else if (recipient === 'ag_oeffentlich') toast.success('E-Mail versendet + PDF heruntergeladen!')
       else toast.success('E-Mail an Bauherr versendet + PDF heruntergeladen!')
@@ -2121,14 +2146,23 @@ function AdminPanel() {
 
   useEffect(() => {
     async function load() {
-      const [bRes, pRes, cRes] = await Promise.all([
+      const [bRes, pRes, cRes, uRes] = await Promise.all([
         sb.from('begehungen').select('id, titel, user_id, datum, status, auftraggeber_firma, auftraggeber_name').order('datum', { ascending:false }),
         sb.from('profiles').select('id, full_name, firma, uid_nummer, firma_adresse, telefon, email:id'),
         sb.from('companies').select('*, company_subscriptions(plan_id, status)').order('created_at', { ascending:false }),
+        sb.from('usage_events').select('company_id, event_type, created_at').order('created_at', { ascending:false }),
       ])
       setBegehungen(bRes.data || [])
       setProfiles(pRes.data || [])
       setCompanies(cRes.data || [])
+      // Usage Events in companies einbauen
+      const usageData = uRes.data || []
+      setCompanies(prev => (cRes.data || []).map(c => ({
+        ...c,
+        _begehungen_monat: usageData.filter(u => u.company_id === c.id && u.event_type === 'begehung_erstellt' && new Date(u.created_at).getMonth() === new Date().getMonth()).length,
+        _ki_monat: usageData.filter(u => u.company_id === c.id && u.event_type === 'ki_analyse' && new Date(u.created_at).getMonth() === new Date().getMonth()).length,
+        _versendet_monat: usageData.filter(u => u.company_id === c.id && u.event_type === 'protokoll_versendet' && new Date(u.created_at).getMonth() === new Date().getMonth()).length,
+      })))
       setLoading(false)
     }
     load()
@@ -2264,11 +2298,17 @@ function AdminPanel() {
                     {PLANS[plan] || plan}
                   </span>
                 </div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6 }}>
-                  {[['Nutzer', userCount],['Begehungen', begCount],['Max Beg.', c.max_begehungen || 10]].map(([k,v]) => (
-                    <div key={k} style={{ background:'#f9fafb', borderRadius:7, padding:'6px 8px', textAlign:'center' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6 }}>
+                  {[
+                    ['Nutzer', userCount],
+                    ['Beg. Monat', c._begehungen_monat || begCount],
+                    ['KI Monat', c._ki_monat || 0],
+                    ['Versendet', c._versendet_monat || 0],
+                    ['Max Beg.', c.max_begehungen || 10]
+                  ].map(([k,v]) => (
+                    <div key={k} style={{ background:'#f9fafb', borderRadius:7, padding:'6px 4px', textAlign:'center' }}>
                       <p style={{ fontSize:14, fontWeight:800, color:G.text, margin:0 }}>{v}</p>
-                      <p style={{ fontSize:9, color:G.muted, textTransform:'uppercase', margin:0 }}>{k}</p>
+                      <p style={{ fontSize:8, color:G.muted, textTransform:'uppercase', margin:0 }}>{k}</p>
                     </div>
                   ))}
                 </div>
