@@ -3150,8 +3150,32 @@ function App() {
   const [selectedBegehung, setSelectedBegehung] = useState(null)
   const [stats, setStats]             = useState({})
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [showPasswordReset, setShowPasswordReset] = useState(false)
+  const [inviteToken, setInviteToken] = useState(null)
+  const [inviteData, setInviteData]   = useState(null)
 
   useEffect(() => {
+    // Check URL hash for auth redirects
+    const hash = window.location.hash
+    if (hash.includes('type=recovery')) {
+      setShowPasswordReset(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (hash.includes('error=access_denied') || hash.includes('otp_expired')) {
+      setTimeout(() => toast.error('Dieser Link ist abgelaufen. Bitte neuen Link anfordern.'), 500)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+    // Check for invite token
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('invite')
+    if (token) {
+      setInviteToken(token)
+      sb.from('invitations').select('*, companies(name)').eq('token', token).eq('used', false).maybeSingle().then(({ data }) => {
+        if (data && new Date(data.expires_at) > new Date()) setInviteData(data)
+        else toast.error('Diese Einladung ist abgelaufen oder ungültig.')
+      })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+
     sb.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null)
       if (session?.user) loadData(session.user)
