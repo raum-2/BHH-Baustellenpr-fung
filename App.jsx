@@ -670,6 +670,54 @@ function OnboardingModal({ user, onComplete }) {
 }
 
 // ─── Auth ────────────────────────────────────────────────────
+function PasswordResetScreen({ onDone }) {
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSave(e) {
+    e.preventDefault()
+    if (password.length < 8) { toast.error('Mindestens 8 Zeichen'); return }
+    if (password !== confirm) { toast.error('Passwörter stimmen nicht überein'); return }
+    setLoading(true)
+    const { error } = await sb.auth.updateUser({ password })
+    if (error) { toast.error(error.message); setLoading(false); return }
+    toast.success('Passwort erfolgreich geändert!')
+    setLoading(false)
+    onDone()
+  }
+
+  return (
+    <div style={{ minHeight:'100dvh', background:'linear-gradient(135deg, #fff5f5 0%, #fef2f2 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div style={{ width:'100%', maxWidth:400 }}>
+        <div style={{ textAlign:'center', marginBottom:32 }}>
+          <img src="/logo.png" alt="BHH Logo" style={{ width:120, height:'auto', margin:'0 auto 12px', display:'block' }} />
+          <h1 style={{ fontSize:22, fontWeight:800, color:'#1a1a1a', margin:0 }}>Neues Passwort</h1>
+          <p style={{ color:G.muted, fontSize:13, marginTop:4 }}>Bitte wählen Sie ein neues Passwort</p>
+        </div>
+        <div style={card()}>
+          <form onSubmit={handleSave}>
+            <label style={lbl}>Neues Passwort (min. 8 Zeichen)</label>
+            <input style={{ ...inp, borderColor: password && password.length < 8 ? '#fca5a5' : G.border }}
+              type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" required autoFocus />
+            <label style={lbl}>Passwort bestätigen</label>
+            <input style={{ ...inp, borderColor: confirm && confirm !== password ? '#fca5a5' : G.border }}
+              type="password" value={confirm} onChange={e => setConfirm(e.target.value)}
+              placeholder="••••••••" required />
+            {confirm && confirm !== password && (
+              <p style={{ fontSize:11, color:G.accent, margin:'-8px 0 8px' }}>Passwörter stimmen nicht überein</p>
+            )}
+            <button style={{ ...btn('primary'), width:'100%', marginTop:16, padding:'13px', fontSize:15 }} disabled={loading}>
+              {loading ? <span className="spinner"/> : '✓ Passwort speichern'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function LoginScreen({ onLogin, inviteData, inviteToken }) {
   const [mode, setMode] = useState(inviteData ? 'register' : 'login') // login | register | reset | reset_sent
   const [form, setForm] = useState({ email: inviteData?.email || '', password:'', name:'', role: inviteData?.role || 'gutachter' })
@@ -3166,7 +3214,13 @@ function App() {
     </div>
   )
 
-  if (!user) return <LoginScreen onLogin={u => { setUser(u); loadData(u) }} />
+  if (showPasswordReset) return <PasswordResetScreen onDone={() => {
+    setShowPasswordReset(false)
+    sb.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) { setUser(data.session.user); loadData(data.session.user) }
+    })
+  }} />
+  if (!user) return <LoginScreen onLogin={u => { setUser(u); loadData(u) }} inviteData={inviteData} inviteToken={inviteToken} />
 
   function handleBegehungCreated(b) {
     setBegehungen(prev => [b, ...prev])
