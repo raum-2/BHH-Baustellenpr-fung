@@ -343,6 +343,7 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
           const aspect = imgEl.naturalHeight / imgEl.naturalWidth
           const imgW = cW
           const imgH = Math.min(imgW * aspect, 140) // fixe max-Höhe, nicht dynamisch skalieren
+          checkY(imgH + 4) // Umbruch, falls das Bild nicht mehr auf die Seite passt
           doc.addImage(b64, 'JPEG', ml, y, imgW, imgH)
           y += imgH + 5
         } catch(e) { /* skip broken image */ }
