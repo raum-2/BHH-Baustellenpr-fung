@@ -1063,8 +1063,19 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleCreate() {
-    if (!form.titel || !form.sub_ag_firma || !form.sub_ag_email) {
-      toast.error('Bitte alle Pflichtfelder ausfüllen')
+    const fieldLabels = {
+      titel: 'Projekttitel / Bauvorhaben',
+      adresse: 'Projektadresse',
+      sub_ag_firma: 'Zu prüfende Firma',
+      sub_ag_vertreter: 'Vertreter der Firma',
+      sub_ag_email: 'E-Mail der Firma',
+    }
+    const missing = Object.keys(fieldLabels).filter(k => !form[k]?.trim())
+    if (missing.length) {
+      const list = missing.map(k => fieldLabels[k]).join(', ')
+      toast.error('Bitte ausfüllen: ' + list, { duration: 6000 })
+      if (missing.includes('titel') || missing.includes('adresse')) setStep(1)
+      else setStep(2)
       return
     }
     setSaving(true)
