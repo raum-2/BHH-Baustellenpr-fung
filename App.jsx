@@ -297,7 +297,21 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     const nc = noteColor(p.note)
     const nb = noteBg(p.note)
 
-    checkY(35)
+    // ── Budget: ein Punkt (Titel + Bild(er) + Text + Rohnotiz) ≤ halbe A4-Seite ──
+    const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
+    const titleH = 18
+    const textLines = text ? doc.splitTextToSize(text, cW) : []
+    const textH = textLines.length * 5 + (text ? 3 : 0)
+    let rohLines = []
+    if (!isOeff && p.rohtext) rohLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
+    const rohH = rohLines.length * 4.5 + (rohLines.length ? 2 : 0)
+    const pointBudget = 148  // halbe A4 = 148,5mm
+    const padding = 4
+    const availForImages = Math.max(25, pointBudget - titleH - textH - rohH - padding)
+    const perImageMaxH = fotos.length > 0 ? availForImages / fotos.length : 0
+
+    // Ganzer Punkt soll auf eine Seite passen (halbe A4)
+    checkY(Math.min(pointBudget, titleH + (fotos.length ? availForImages : 0) + textH + rohH + padding))
 
     // Note circle
     doc.setFillColor(...nb)
@@ -323,10 +337,9 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     doc.setTextColor(...nc)
     doc.text(p.status || noteLabel(p.note), ml + 15, y + 10.5)
 
-    y += 18
+    y += titleH
 
     // Photos
-    const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
     for (const foto of fotos) {
       if (!foto.url) continue
       const b64 = await imgToBase64(foto.url)
@@ -342,18 +355,15 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
           if (!imgEl) continue
           const aspect = imgEl.naturalHeight / imgEl.naturalWidth
           const imgW = cW
-          const imgH = Math.min(imgW * aspect, 140) // max ~halbe A4-Seite
-          checkY(imgH + 6)
+          const imgH = Math.min(imgW * aspect, perImageMaxH)
           doc.addImage(b64, 'JPEG', ml, y, imgW, imgH)
-          y += imgH + 5
+          y += imgH + 3
         } catch(e) { /* skip broken image */ }
       }
     }
 
     // Text
     if (text) {
-      checkY(20)
-      const textLines = doc.splitTextToSize(text, cW)
       doc.setFontSize(9.5)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(...dark)
@@ -362,14 +372,12 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     }
 
     // Rohnotiz (intern only)
-    if (!isOeff && p.rohtext) {
-      checkY(10)
+    if (rohLines.length) {
       doc.setFontSize(8)
       doc.setFont('helvetica', 'italic')
       doc.setTextColor(...muted)
-      const rLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
-      doc.text(rLines, ml, y)
-      y += rLines.length * 4.5
+      doc.text(rohLines, ml, y)
+      y += rohLines.length * 4.5
     }
 
     // Divider
