@@ -16,7 +16,7 @@ const HAUPT_AG = {
   email:    'office@bauherrenhilfe.at',
 }
 
-const GEWERKE = ['Rohbau','Ausbau / Fertigstellung']
+const GEWERKE = ['Rohbau','Ausbau','Fertigstellung']
 const NOTEN = [
   { n:1, label:'Besser als gefordert', color:'#16a34a', bg:'#dcfce7' },
   { n:2, label:'Alle Forderungen erfüllt', color:'#2563eb', bg:'#dbeafe' },
