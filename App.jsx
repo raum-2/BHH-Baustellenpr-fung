@@ -342,7 +342,7 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
           if (!imgEl) continue
           const aspect = imgEl.naturalHeight / imgEl.naturalWidth
           const imgW = cW
-          const imgH = Math.min(imgW * aspect, 100) // max 100mm height
+          const imgH = Math.min(imgW * aspect, 140) // max ~halbe A4-Seite
           checkY(imgH + 6)
           doc.addImage(b64, 'JPEG', ml, y, imgW, imgH)
           y += imgH + 5
