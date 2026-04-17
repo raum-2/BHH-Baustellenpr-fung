@@ -297,21 +297,8 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     const nc = noteColor(p.note)
     const nb = noteBg(p.note)
 
-    // ── Budget: ein Punkt (Titel + Bild(er) + Text + Rohnotiz) ≤ halbe A4-Seite ──
-    const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
-    const titleH = 18
-    const textLines = text ? doc.splitTextToSize(text, cW) : []
-    const textH = textLines.length * 5 + (text ? 3 : 0)
-    let rohLines = []
-    if (!isOeff && p.rohtext) rohLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
-    const rohH = rohLines.length * 4.5 + (rohLines.length ? 2 : 0)
-    const pointBudget = 148  // halbe A4 = 148,5mm
-    const padding = 4
-    const availForImages = Math.max(25, pointBudget - titleH - textH - rohH - padding)
-    const perImageMaxH = fotos.length > 0 ? availForImages / fotos.length : 0
-
-    // Ganzer Punkt soll auf eine Seite passen (halbe A4)
-    checkY(Math.min(pointBudget, titleH + (fotos.length ? availForImages : 0) + textH + rohH + padding))
+    // Jeder Prüfpunkt startet auf einer neuen A4-Seite
+    addPage()
 
     // Note circle
     doc.setFillColor(...nb)
@@ -337,15 +324,15 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
     doc.setTextColor(...nc)
     doc.text(p.status || noteLabel(p.note), ml + 15, y + 10.5)
 
-    y += titleH
+    y += 18
 
     // Photos
+    const fotos = isOeff ? (p.fotos?.filter(f=>f.url).slice(0,2) || []) : (p.fotos?.filter(f=>f.url) || [])
     for (const foto of fotos) {
       if (!foto.url) continue
       const b64 = await imgToBase64(foto.url)
       if (b64) {
         try {
-          // Get natural dimensions to preserve aspect ratio
           const imgEl = await new Promise(res => {
             const i = new Image()
             i.onload = () => res(i)
@@ -355,29 +342,37 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
           if (!imgEl) continue
           const aspect = imgEl.naturalHeight / imgEl.naturalWidth
           const imgW = cW
-          const imgH = Math.min(imgW * aspect, perImageMaxH)
+          const imgH = Math.min(imgW * aspect, 140) // fixe max-Höhe, nicht dynamisch skalieren
           doc.addImage(b64, 'JPEG', ml, y, imgW, imgH)
-          y += imgH + 3
+          y += imgH + 5
         } catch(e) { /* skip broken image */ }
       }
     }
 
-    // Text
+    // Text (überläuft bei Bedarf auf Folgeseite)
     if (text) {
+      const textLines = doc.splitTextToSize(text, cW)
       doc.setFontSize(9.5)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(...dark)
-      doc.text(textLines, ml, y)
-      y += textLines.length * 5
+      for (const line of textLines) {
+        checkY(5)
+        doc.text(line, ml, y)
+        y += 5
+      }
     }
 
     // Rohnotiz (intern only)
-    if (rohLines.length) {
+    if (!isOeff && p.rohtext) {
+      const rohLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
       doc.setFontSize(8)
       doc.setFont('helvetica', 'italic')
       doc.setTextColor(...muted)
-      doc.text(rohLines, ml, y)
-      y += rohLines.length * 4.5
+      for (const line of rohLines) {
+        checkY(4.5)
+        doc.text(line, ml, y)
+        y += 4.5
+      }
     }
 
     // Divider
