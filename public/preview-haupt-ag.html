@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Preview – Haupt-AG & Sub-AG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#f5f5f5; --card:#ffffff; --border:#e5e7eb; --text:#111111; --muted:#6b7280;
+    --accent:#cc1f1f; --accentLight:#fef2f2; --accentBorder:#fca5a5;
+    --green:#16a34a; --red:#dc2626;
+  }
+  * { font-family:'Inter',sans-serif; box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); padding:24px 16px; }
+  .wrap { max-width:780px; margin:0 auto; }
+  .tabs { display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap; }
+  .tab { padding:8px 14px; background:#fff; border:1px solid var(--border); border-radius:8px; font-size:12px; font-weight:700; color:var(--muted); cursor:pointer; }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .panel { display:none; animation:fadeUp .25s ease; }
+  .panel.active { display:block; }
+  @keyframes fadeUp { from {opacity:0;transform:translateY(6px);} to {opacity:1;transform:translateY(0);} }
+  h1 { font-size:18px; font-weight:800; margin:0 0 4px; }
+  h2 { font-size:13px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.5px; margin:24px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:20px; margin-bottom:14px; }
+  label { display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; margin:12px 0 5px; }
+  input,select,textarea { width:100%; background:#fff; border:1.5px solid var(--border); border-radius:8px; padding:10px 13px; font-size:14px; color:var(--text); outline:none; transition:border-color .15s; }
+  input:focus,select:focus,textarea:focus { border-color:var(--accent); }
+  input::placeholder { color:var(--muted); }
+  .fix-box { background:var(--accentLight); border:0.5px solid var(--accentBorder); border-radius:10px; padding:12px 14px; margin-bottom:14px; }
+  .fix-box .lbl { font-size:10px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.5px; margin:0 0 6px; }
+  .fix-box .firma { font-size:13px; font-weight:700; color:var(--text); margin:0 0 2px; }
+  .fix-box .line { font-size:12px; color:var(--muted); margin:0 0 2px; }
+  .btn-primary { background:var(--accent); color:#fff; border:none; border-radius:10px; padding:13px 20px; font-size:14px; font-weight:700; width:100%; cursor:pointer; }
+  .btn-ghost { background:#f9fafb; border:0.5px solid var(--border); border-radius:10px; padding:12px 20px; font-size:13px; font-weight:600; color:var(--text); width:100%; cursor:pointer; margin-top:8px; }
+  .step-indicator { display:flex; gap:8px; margin-bottom:24px; }
+  .step { flex:1; text-align:center; }
+  .step .bar { height:4px; border-radius:4px; background:var(--border); margin-bottom:6px; }
+  .step.active .bar { background:var(--accent); }
+  .step .lbl2 { font-size:10px; color:var(--muted); font-weight:600; }
+  .step.active .lbl2 { color:var(--accent); }
+  /* Protokoll-Header */
+  .proto-card { background:#fff; border:0.5px solid var(--border); border-radius:12px; padding:16px; margin-bottom:12px; }
+  .proto-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-bottom:12px; border-bottom:0.5px solid var(--border); }
+  .proto-head .title { font-size:16px; font-weight:800; color:var(--accent); margin:0 0 4px; }
+  .proto-head .sub { font-size:12px; color:var(--muted); margin:0; }
+  .meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .meta-cell { background:#f9fafb; border-radius:8px; padding:8px 10px; }
+  .meta-cell .k { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; margin:0 0 2px; }
+  .meta-cell .v { font-size:12px; font-weight:600; color:var(--text); margin:0; }
+  /* Email */
+  .email-wrap { max-width:600px; margin:0 auto; background:#f5f5f5; padding:20px 10px; border-radius:12px; }
+  .email { background:#fff; border-radius:8px; overflow:hidden; }
+  .email-head { background:var(--accent); padding:24px 28px; }
+  .email-head p1 { margin:0 0 4px; font-size:20px; font-weight:700; color:#fff; display:block; }
+  .email-head p2 { margin:0; font-size:13px; color:rgba(255,255,255,0.85); display:block; }
+  .email-body { padding:24px 28px; }
+  .email-body p { font-size:14px; color:#374151; margin:0 0 12px; }
+  .email-table { width:100%; border-collapse:collapse; margin:16px 0 24px; }
+  .email-table tr:nth-child(odd) { background:#f9fafb; }
+  .email-table td { padding:8px 12px; font-size:13px; color:#111; font-weight:700; }
+  .email-table td:first-child { color:var(--muted); font-weight:400; width:140px; }
+  .email-btn { background:var(--accent); color:#fff; border:none; border-radius:6px; padding:13px 24px; font-size:14px; font-weight:700; display:block; text-align:center; margin:0 auto 10px; text-decoration:none; width:220px; }
+  .email-btn.dark { background:#7f1d1d; }
+  /* Versand Buttons */
+  .send-btn { display:flex; align-items:center; justify-content:center; gap:8px; padding:13px 16px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; width:100%; border:none; margin-bottom:10px; }
+  .send-btn.primary { background:var(--accent); color:#fff; }
+  .send-btn.ghost { background:#f9fafb; border:0.5px solid var(--border); color:var(--text); font-weight:600; }
+  .note { background:#fff7ed; border-left:3px solid #f97316; padding:10px 14px; font-size:12px; color:#78350f; border-radius:8px; margin-bottom:20px; }
+  .hint { font-size:11px; color:var(--muted); margin-top:6px; }
+  .diff-title { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:3px 8px; border-radius:4px; display:inline-block; margin-bottom:8px; }
+  .diff-title.before { background:#fef2f2; color:#991b1b; }
+  .diff-title.after { background:#dcfce7; color:#166534; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:680px) { .grid2 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏗 Bauherrenhilfe – Preview: Haupt-AG + Sub-AG</h1>
+  <p style="font-size:13px;color:var(--muted);margin:0 0 20px;">
+    Statische Vorschau der UI-Änderungen. Keine Daten werden gespeichert.
+  </p>
+
+  <div class="note">
+    💡 Der Hauptauftraggeber <strong>Bauherrenhilfe.org – Verein für Qualität am Bau</strong>
+    ist in allen Begehungen fix hinterlegt und kann nicht editiert werden.
+    Die <em>zu prüfende Firma</em> wird pro Begehung erfasst.
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-panel="form">1. Formular Step 2</button>
+    <button class="tab" data-panel="proto">2. Protokoll-Header</button>
+    <button class="tab" data-panel="email">3. E-Mail</button>
+    <button class="tab" data-panel="send">4. Versand-Buttons</button>
+  </div>
+
+  <!-- PANEL 1: FORMULAR -->
+  <section class="panel active" id="panel-form">
+    <div class="card">
+      <div class="step-indicator">
+        <div class="step"><div class="bar"></div><div class="lbl2">Projekt</div></div>
+        <div class="step active"><div class="bar"></div><div class="lbl2">Beteiligte</div></div>
+        <div class="step"><div class="bar"></div><div class="lbl2">Details</div></div>
+      </div>
+
+      <div class="fix-box">
+        <p class="lbl">Hauptauftraggeber (fix)</p>
+        <p class="firma">Bauherrenhilfe.org – Verein für Qualität am Bau</p>
+        <p class="line">Prinz Eugenstraße 76/1, 1040 Wien</p>
+        <p class="line">office@bauherrenhilfe.at</p>
+      </div>
+
+      <label>Zu prüfende Firma *</label>
+      <input placeholder="Firma / Unternehmen" value="ACME Baugesellschaft m.b.H.">
+
+      <label>Vertreter der Firma *</label>
+      <input placeholder="Vor- und Nachname" value="Max Mustermann">
+
+      <label>E-Mail der Firma *</label>
+      <input type="email" placeholder="email@firma.at" value="office@acme-bau.at">
+
+      <label>Adresse der Firma</label>
+      <input placeholder="Straße, PLZ Ort" value="Baustraße 42, 1100 Wien">
+
+      <label>Sachverständiger</label>
+      <input placeholder="Name SV" value="Ing. Ferid Mujcinovic MBA">
+
+      <button class="btn-primary" style="margin-top:20px;">Weiter →</button>
+    </div>
+    <p class="hint">Kunde/Bauherr-Felder sind entfallen – Bauherrenhilfe ist jetzt der Hauptauftraggeber.</p>
+  </section>
+
+  <!-- PANEL 2: PROTOKOLL-HEADER -->
+  <section class="panel" id="panel-proto">
+    <div class="proto-card">
+      <div class="proto-head">
+        <div>
+          <p class="title">Baustellenprüfprotokoll</p>
+          <p class="sub">Öffentlich · Für Auftraggeber</p>
+        </div>
+        <div style="text-align:right;">
+          <p style="font-size:11px;color:var(--muted);margin:0 0 4px;">17.04.2026</p>
+          <div style="width:32px;height:32px;border-radius:50%;background:#fef3c7;border:2px solid #d97706;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#d97706;">3</div>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-cell">
+          <p class="k">Hauptauftraggeber</p>
+          <p class="v">Bauherrenhilfe.org – Verein für Qualität am Bau</p>
+        </div>
+        <div class="meta-cell">
+          <p class="k">Zu prüfende Firma</p>
+          <p class="v">ACME Baugesellschaft m.b.H.</p>
+        </div>
+        <div class="meta-cell">
+          <p class="k">Sachverständiger</p>
+          <p class="v">Ing. Ferid Mujcinovic MBA</p>
+        </div>
+        <div class="meta-cell">
+          <p class="k">Adresse</p>
+          <p class="v">Baustraße 42, 1100 Wien</p>
+        </div>
+      </div>
+    </div>
+
+    <h2>PDF – Grundlagentext (Seite 1)</h2>
+    <div class="card">
+      <p style="font-size:13px;line-height:1.7;margin:0;">
+        Die Baustellenprüfung wurde im Auftrag des Hauptauftraggebers
+        <strong>Bauherrenhilfe.org – Verein für Qualität am Bau</strong>
+        zur Prüfung der Firma <strong>ACME Baugesellschaft m.b.H.</strong>
+        durchgeführt. Gegenstand der Prüfung ist die Prüfung der Verarbeitung
+        des Qualitätsbetriebes. Die Begehung erfolgte am 17.04.2026 durch den
+        Sachverständigen Ing. Ferid Mujcinovic MBA.
+      </p>
+    </div>
+  </section>
+
+  <!-- PANEL 3: E-MAIL -->
+  <section class="panel" id="panel-email">
+    <div class="email-wrap">
+      <div class="email">
+        <div class="email-head">
+          <p1>Baustellenprüfprotokoll</p1><br>
+          <p2>EFH Musterstraße – Rohbauabnahme</p2>
+        </div>
+        <div class="email-body">
+          <p>Sehr geehrte Damen und Herren,</p>
+          <p>anbei finden Sie die Links zu den Protokollen der Baustellenprüfung.</p>
+          <table class="email-table">
+            <tr><td>Bauvorhaben</td><td>EFH Musterstraße – Rohbauabnahme</td></tr>
+            <tr><td>Adresse</td><td>Baustraße 42, 1100 Wien</td></tr>
+            <tr><td>Hauptauftraggeber</td><td>Bauherrenhilfe.org – Verein für Qualität am Bau</td></tr>
+            <tr><td>Zu prüfende Firma</td><td>ACME Baugesellschaft m.b.H.</td></tr>
+            <tr><td>Sachverständiger</td><td>Ing. Ferid Mujcinovic MBA</td></tr>
+          </table>
+          <a href="#" class="email-btn">Protokoll herunterladen</a>
+          <a href="#" class="email-btn dark">Internes Protokoll herunterladen</a>
+          <p style="font-size:13px;color:var(--muted);margin-top:24px;border-top:1px solid #f3f4f6;padding-top:16px;">
+            Mit freundlichen Grüßen<br>
+            <strong style="color:#111;">Ing. Ferid Mujcinovic MBA</strong><br>
+            Bauherrenhilfe · bauherrenhilfe.at
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PANEL 4: VERSAND-BUTTONS -->
+  <section class="panel" id="panel-send">
+    <h2>Prüfpunkte-Tab · Versand-Optionen</h2>
+    <div class="card">
+      <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px;">
+        Protokoll versenden
+      </p>
+      <button class="send-btn primary">👁 Vorschau & Beide Protokolle an zu prüfende Firma</button>
+      <button class="send-btn ghost">👁 Vorschau & Internes an Hauptauftraggeber</button>
+      <p class="hint">
+        <strong>an zu prüfende Firma:</strong> öffentliches + internes Protokoll gehen an <code>office@acme-bau.at</code> (Sub-AG).<br>
+        <strong>an Hauptauftraggeber:</strong> nur internes Protokoll geht an <code>office@bauherrenhilfe.at</code> (fix).
+      </p>
+    </div>
+
+    <h2>Öffentliches Protokoll – Tab</h2>
+    <div class="card">
+      <button class="send-btn primary">👁 Vorschau & An zu prüfende Firma senden</button>
+    </div>
+
+    <h2>Internes Protokoll – Tab</h2>
+    <div class="card">
+      <button class="send-btn primary">👁 Vorschau & Beide Protokolle an zu prüfende Firma</button>
+      <button class="send-btn ghost">👁 Vorschau & Internes an Hauptauftraggeber</button>
+    </div>
+  </section>
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('panel-' + t.dataset.panel).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>
