@@ -1,4 +1,10 @@
-// v2 - button spacing fix
+// v3 - Haupt-AG (Bauherrenhilfe, fix) + Sub-AG (zu prüfende Firma)
+const HAUPT_AG = {
+  firma:   'Bauherrenhilfe.org - Verein für Qualität am Bau',
+  adresse: 'Prinz Eugenstraße 76/1, 1040 Wien',
+  email:   'office@bauherrenhilfe.at',
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -6,8 +12,8 @@ export default async function handler(req, res) {
   const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
   const FROM_EMAIL = process.env.FROM_EMAIL || 'ferid.m@gesetz.at'
 
-  const agEmail = begehung.auftraggeber_email
-  const bauherrEmail = begehung.kunde_email
+  const subAgEmail = begehung.sub_ag_email || begehung.auftraggeber_email
+  const subAgFirma = begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'
   const titel = begehung.titel || 'Baustellenprüfung'
 
   function btn(url, label, bg) {
@@ -52,8 +58,9 @@ export default async function handler(req, res) {
       + '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;border-collapse:collapse;">'
       + '<tr style="background-color:#f9fafb;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;width:140px;">Bauvorhaben</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + (begehung.titel||'–') + '</td></tr>'
       + '<tr style="background-color:#ffffff;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;">Adresse</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + (begehung.adresse||'–') + '</td></tr>'
-      + '<tr style="background-color:#f9fafb;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;">Auftraggeber</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + (begehung.auftraggeber_firma||begehung.auftraggeber_name||'–') + '</td></tr>'
-      + '<tr style="background-color:#ffffff;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;">Sachverständiger</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + (begehung.sachverstaendiger||'–') + '</td></tr>'
+      + '<tr style="background-color:#f9fafb;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;">Hauptauftraggeber</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + HAUPT_AG.firma + '</td></tr>'
+      + '<tr style="background-color:#ffffff;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;">Zu prüfende Firma</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + subAgFirma + '</td></tr>'
+      + '<tr style="background-color:#f9fafb;"><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;color:#6b7280;">Sachverständiger</td><td style="padding:8px 12px;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;color:#111111;">' + (begehung.sachverstaendiger||'–') + '</td></tr>'
       + '</table>'
 
       // Download buttons
@@ -92,21 +99,20 @@ export default async function handler(req, res) {
 
   try {
     if (recipient === 'ag_beide') {
-      if (!agEmail) return res.status(400).json({ error: 'Keine AG E-Mail' })
+      if (!subAgEmail) return res.status(400).json({ error: 'Keine E-Mail für zu prüfende Firma' })
       const links = []
       if (linkOeff) links.push({ url: linkOeff, label: 'Protokoll herunterladen', bg: '#cc1f1f' })
       if (linkIntern) links.push({ url: linkIntern, label: 'Internes Protokoll herunterladen', bg: '#7f1d1d' })
-      await sendMail(agEmail, 'Baustellenprotokolle – ' + titel, buildBody({ links }))
+      await sendMail(subAgEmail, 'Baustellenprotokolle – ' + titel, buildBody({ links }))
 
     } else if (recipient === 'ag_oeffentlich') {
-      if (!agEmail) return res.status(400).json({ error: 'Keine AG E-Mail' })
+      if (!subAgEmail) return res.status(400).json({ error: 'Keine E-Mail für zu prüfende Firma' })
       const links = linkOeff ? [{ url: linkOeff, label: 'Protokoll herunterladen', bg: '#cc1f1f' }] : []
-      await sendMail(agEmail, 'Baustellenprotokoll – ' + titel, buildBody({ links }))
+      await sendMail(subAgEmail, 'Baustellenprotokoll – ' + titel, buildBody({ links }))
 
-    } else if (recipient === 'bauherr') {
-      if (!bauherrEmail) return res.status(400).json({ error: 'Keine Bauherr E-Mail' })
-      const links = linkOeff ? [{ url: linkOeff, label: 'Ihr Protokoll herunterladen', bg: '#cc1f1f' }] : []
-      await sendMail(bauherrEmail, 'Ihr Baustellenprotokoll – ' + titel, buildBody({ links }))
+    } else if (recipient === 'haupt_ag') {
+      const links = linkIntern ? [{ url: linkIntern, label: 'Internes Protokoll herunterladen', bg: '#7f1d1d' }] : []
+      await sendMail(HAUPT_AG.email, 'Internes Baustellenprotokoll – ' + titel, buildBody({ links }))
 
     } else {
       return res.status(400).json({ error: 'Ungültiger recipient' })

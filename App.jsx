@@ -9,6 +9,13 @@ const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON)
 
+// Fixer Hauptauftraggeber – gilt für alle Begehungen, nicht editierbar.
+const HAUPT_AG = {
+  firma:    'Bauherrenhilfe.org - Verein für Qualität am Bau',
+  adresse:  'Prinz Eugenstraße 76/1, 1040 Wien',
+  email:    'office@bauherrenhilfe.at',
+}
+
 const GEWERKE = ['Rohbau','Ausbau / Fertigstellung']
 const NOTEN = [
   { n:1, label:'Besser als gefordert', color:'#16a34a', bg:'#dcfce7' },
@@ -227,8 +234,8 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
   doc.line(0, 68, pW, 68)
 
   const cols = [
-    ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name || '–'],
-    ['Bauherr', begehung.kunde_name || '–'],
+    ['Hauptauftraggeber', HAUPT_AG.firma],
+    ['Zu prüfende Firma', begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'],
     ['Sachverständiger', begehung.sachverstaendiger || '–'],
   ]
   cols.forEach((c, i) => {
@@ -257,8 +264,10 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
   doc.line(ml, y, ml + cW, y)
   y += 5
 
-  const grundlagenText = 'Die Baustellenprüfung wurde im Auftrag des Auftraggebers ' +
-    (begehung.auftraggeber_firma || begehung.auftraggeber_name || '–') +
+  const grundlagenText = 'Die Baustellenprüfung wurde im Auftrag des Hauptauftraggebers ' +
+    HAUPT_AG.firma +
+    ' zur Prüfung der Firma ' +
+    (begehung.sub_ag_firma || begehung.auftraggeber_firma || '–') +
     ' durchgeführt. Gegenstand der Prüfung ist die Prüfung der Verarbeitung des Qualitätsbetriebes. Die Begehung erfolgte am ' +
     fmtDate(begehung.datum) + ' durch den Sachverständigen ' +
     (begehung.sachverstaendiger || '–') + '.'
@@ -1022,7 +1031,7 @@ function BegehungenListe({ setPage, setSelectedBegehung, begehungen, loading, on
                 <p style={{ fontWeight:700, fontSize:14, margin:'0 0 3px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.titel}</p>
                 <p style={{ fontSize:12, color:G.muted, margin:'0 0 6px' }}>{b.gewerk} · {formatDate(b.datum)}</p>
                 <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:10, background:G.accentLight, borderRadius:6, padding:'2px 8px', color:G.accent, fontWeight:600 }}>{b.auftraggeber_firma || b.auftraggeber_name}</span>
+                  <span style={{ fontSize:10, background:G.accentLight, borderRadius:6, padding:'2px 8px', color:G.accent, fontWeight:600 }}>{b.sub_ag_firma || b.auftraggeber_firma || '–'}</span>
                   <StatusBadge status={b.status || 'erstellt'} />
                   {b.pruefpunkte_count > 0 && <span style={{ fontSize:10, background:'#f0fdf4', borderRadius:6, padding:'2px 8px', color:G.green, fontWeight:600 }}>{b.pruefpunkte_count} Punkte</span>}
                 </div>
@@ -1044,8 +1053,9 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
   const [step, setStep] = useState(1)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    titel: '', adresse: '', auftraggeber_firma: '', vertreter_ag: '', auftraggeber_email: '',
-    kunde_name: '', kunde_email: '', sachverstaendiger: user?.user_metadata?.full_name || 'Ing. Ferid Mujcinovic MBA',
+    titel: '', adresse: '',
+    sub_ag_firma: '', sub_ag_vertreter: '', sub_ag_email: '', sub_ag_adresse: '',
+    sachverstaendiger: user?.user_metadata?.full_name || 'Ing. Ferid Mujcinovic MBA',
     datum: new Date().toISOString().split('T')[0],
     uhrzeit: new Date().toTimeString().slice(0,5),
     gewerk: GEWERKE[0], bemerkungen: '',
@@ -1053,7 +1063,7 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleCreate() {
-    if (!form.titel || !form.auftraggeber_firma || !form.auftraggeber_email) {
+    if (!form.titel || !form.sub_ag_firma || !form.sub_ag_email) {
       toast.error('Bitte alle Pflichtfelder ausfüllen')
       return
     }
@@ -1129,16 +1139,21 @@ function NeueBegehung({ user, profile, setPage, onCreated }) {
 
         {step === 2 && (
           <div className="fade-up">
-            <label style={lbl}>Auftraggeber Firma *</label>
-            <input style={inp} value={form.auftraggeber_firma} onChange={e => upd('auftraggeber_firma', e.target.value)} placeholder="Firma / Unternehmen" />
-            <label style={lbl}>Vertreter AG (Name) *</label>
-            <input style={inp} value={form.vertreter_ag} onChange={e => upd('vertreter_ag', e.target.value)} placeholder="Vor- und Nachname" />
-            <label style={lbl}>E-Mail AG *</label>
-            <input style={inp} type="email" value={form.auftraggeber_email} onChange={e => upd('auftraggeber_email', e.target.value)} placeholder="email@firma.at" />
-            <label style={lbl}>Kunde / Bauherr (Name)</label>
-            <input style={inp} value={form.kunde_name} onChange={e => upd('kunde_name', e.target.value)} placeholder="Name des Bauherrn" />
-            <label style={lbl}>E-Mail Kunde</label>
-            <input style={inp} type="email" value={form.kunde_email} onChange={e => upd('kunde_email', e.target.value)} placeholder="email@kunde.at" />
+            {/* Hauptauftraggeber – fix, nicht editierbar */}
+            <div style={{ background:G.accentLight, border:`0.5px solid ${G.accentBorder}`, borderRadius:10, padding:'12px 14px', marginBottom:14 }}>
+              <p style={{ fontSize:10, fontWeight:700, color:G.accent, textTransform:'uppercase', letterSpacing:'.5px', margin:'0 0 6px' }}>Hauptauftraggeber (fix)</p>
+              <p style={{ fontSize:13, fontWeight:700, color:G.text, margin:'0 0 2px' }}>{HAUPT_AG.firma}</p>
+              <p style={{ fontSize:12, color:G.muted, margin:'0 0 2px' }}>{HAUPT_AG.adresse}</p>
+              <p style={{ fontSize:12, color:G.muted, margin:0 }}>{HAUPT_AG.email}</p>
+            </div>
+            <label style={lbl}>Zu prüfende Firma *</label>
+            <input style={inp} value={form.sub_ag_firma} onChange={e => upd('sub_ag_firma', e.target.value)} placeholder="Firma / Unternehmen" />
+            <label style={lbl}>Vertreter der Firma *</label>
+            <input style={inp} value={form.sub_ag_vertreter} onChange={e => upd('sub_ag_vertreter', e.target.value)} placeholder="Vor- und Nachname" />
+            <label style={lbl}>E-Mail der Firma *</label>
+            <input style={inp} type="email" value={form.sub_ag_email} onChange={e => upd('sub_ag_email', e.target.value)} placeholder="email@firma.at" />
+            <label style={lbl}>Adresse der Firma</label>
+            <input style={inp} value={form.sub_ag_adresse} onChange={e => upd('sub_ag_adresse', e.target.value)} placeholder="Straße, PLZ Ort" />
             <label style={lbl}>Sachverständiger</label>
             <input style={inp} value={form.sachverstaendiger} onChange={e => upd('sachverstaendiger', e.target.value)} placeholder="Name SV" />
           </div>
@@ -1437,16 +1452,13 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
   }
 
   async function sendProtocol(recipient) {
-    // recipient: 'ag_beide' = beide Protokolle an AG
-    //            'ag_oeffentlich' = nur öffentliches an AG
-    //            'bauherr' = nur öffentliches an Bauherr
-    const agEmail = begehung.auftraggeber_email
-    const bauherrEmail = begehung.kunde_email
+    // recipient: 'ag_beide'       = beide Protokolle an zu prüfende Firma
+    //            'ag_oeffentlich' = nur öffentliches an zu prüfende Firma
+    //            'haupt_ag'       = internes Protokoll an Hauptauftraggeber (Bauherrenhilfe)
+    const agEmail = begehung.sub_ag_email || begehung.auftraggeber_email
+    const hauptAgEmail = HAUPT_AG.email
     if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich') {
-      if (!agEmail) { toast.error('Keine E-Mail für Auftraggeber hinterlegt'); return }
-    }
-    if (recipient === 'bauherr') {
-      if (!bauherrEmail) { toast.error('Keine E-Mail für Bauherr hinterlegt'); return }
+      if (!agEmail) { toast.error('Keine E-Mail für zu prüfende Firma hinterlegt'); return }
     }
     setSending(recipient)
     try {
@@ -1467,10 +1479,10 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         return data?.publicUrl || null
       }
 
-      if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich' || recipient === 'bauherr') {
+      if (recipient === 'ag_beide' || recipient === 'ag_oeffentlich') {
         linkOeff = await uploadPDF('oeffentlich')
       }
-      if (recipient === 'ag_beide') {
+      if (recipient === 'ag_beide' || recipient === 'haupt_ag') {
         linkIntern = await uploadPDF('intern')
       }
 
@@ -1487,7 +1499,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       toast.dismiss('pdf-send')
       // History + Usage tracken
       try {
-        const toEmail = recipient === 'bauherr' ? begehung.kunde_email : begehung.auftraggeber_email
+        const toEmail = recipient === 'haupt_ag' ? hauptAgEmail : agEmail
         await addHistory('protokoll_versendet', {
           recipient,
           email: toEmail,
@@ -1499,7 +1511,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       } catch(e) {}
       if (recipient === 'ag_beide') toast.success('E-Mail + PDFs versendet & heruntergeladen!')
       else if (recipient === 'ag_oeffentlich') toast.success('E-Mail versendet + PDF heruntergeladen!')
-      else toast.success('E-Mail an Bauherr versendet + PDF heruntergeladen!')
+      else toast.success('Internes Protokoll an Hauptauftraggeber versendet!')
       // Status auf 'versendet' setzen (nur wenn noch nicht abgeschlossen)
       if (begehung.status !== 'abgeschlossen') {
         await sb.from('begehungen').update({ status: 'versendet' }).eq('id', begehung.id)
@@ -1522,11 +1534,11 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
 
   function PreviewModal() {
     if (!showPreview) return null
-    const showOeff = showPreview === 'ag_beide' || showPreview === 'ag_oeffentlich' || showPreview === 'bauherr'
-    const showIntern = showPreview === 'ag_beide'
-    const recipientLabel = showPreview === 'ag_beide' ? 'Beide Protokolle an AG senden'
-      : showPreview === 'ag_oeffentlich' ? 'Öffentliches Protokoll an AG senden'
-      : 'Öffentliches Protokoll an Bauherr senden'
+    const showOeff = showPreview === 'ag_beide' || showPreview === 'ag_oeffentlich'
+    const showIntern = showPreview === 'ag_beide' || showPreview === 'haupt_ag'
+    const recipientLabel = showPreview === 'ag_beide' ? 'Beide Protokolle an zu prüfende Firma'
+      : showPreview === 'ag_oeffentlich' ? 'Öffentliches Protokoll an zu prüfende Firma'
+      : 'Internes Protokoll an Hauptauftraggeber'
 
     return (
       <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:2000, overflowY:'auto', padding:'16px' }}>
@@ -1554,7 +1566,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
                 {/* Meta */}
                 <div style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:12, marginBottom:10 }}>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    {[['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],['Bauherr', begehung.kunde_name || '–'],['SV', begehung.sachverstaendiger],['Datum', formatDate(begehung.datum)]].map(([k,v]) => (
+                    {[['Haupt-AG', HAUPT_AG.firma],['Zu prüfende Firma', begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'],['SV', begehung.sachverstaendiger],['Datum', formatDate(begehung.datum)]].map(([k,v]) => (
                       <div key={k}>
                         <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 1px' }}>{k}</p>
                         <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
@@ -1587,7 +1599,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
                 </div>
                 <div style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:12, marginBottom:10 }}>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    {[['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],['Bauherr', begehung.kunde_name || '–'],['SV', begehung.sachverstaendiger],['Datum', formatDate(begehung.datum)]].map(([k,v]) => (
+                    {[['Haupt-AG', HAUPT_AG.firma],['Zu prüfende Firma', begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'],['SV', begehung.sachverstaendiger],['Datum', formatDate(begehung.datum)]].map(([k,v]) => (
                       <div key={k}>
                         <p style={{ fontSize:10, fontWeight:700, color:G.muted, textTransform:'uppercase', margin:'0 0 1px' }}>{k}</p>
                         <p style={{ fontSize:12, fontWeight:600, color:G.text, margin:0 }}>{v || '–'}</p>
@@ -1697,7 +1709,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
     const isOeff = type === 'oeffentlich'
     const color = isOeff ? '#cc1f1f' : '#991515'
     const title = isOeff ? 'Baustellenprüfprotokoll' : 'Internes Protokoll'
-    const subtitle = isOeff ? 'Öffentliches Protokoll · Für Auftraggeber & Bauherr' : 'Vertraulich · Nur für interne Zwecke'
+    const subtitle = isOeff ? 'Öffentliches Protokoll · Für Auftraggeber' : 'Vertraulich · Nur für interne Zwecke'
 
     const items = punkte.map((p, i) => {
       const text = getEditedText(p, type === 'oeffentlich' ? 'oeffentlich' : 'intern')
@@ -1728,8 +1740,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
       + '<table style="width:100%;font-size:12px;margin-bottom:16px;border-collapse:collapse;">'
       + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;width:140px;">Bauvorhaben</td><td style="font-weight:600;">' + (begehung.titel || '') + '</td></tr>'
       + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Adresse</td><td style="font-weight:600;">' + (begehung.adresse || '–') + '</td></tr>'
-      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Auftraggeber</td><td style="font-weight:600;">' + (begehung.auftraggeber_firma || begehung.auftraggeber_name || '–') + '</td></tr>'
-      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Bauherr</td><td style="font-weight:600;">' + (begehung.kunde_name || '–') + '</td></tr>'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Hauptauftraggeber</td><td style="font-weight:600;">' + HAUPT_AG.firma + '</td></tr>'
+      + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Zu prüfende Firma</td><td style="font-weight:600;">' + (begehung.sub_ag_firma || begehung.auftraggeber_firma || '–') + '</td></tr>'
       + '<tr><td style="color:#6b7280;padding:4px 8px 4px 0;">Sachverständiger</td><td style="font-weight:600;">' + (begehung.sachverstaendiger || '–') + '</td></tr>'
       + '</table>'
       + items
@@ -1765,8 +1777,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
         <div style={{ ...card({ marginBottom:16, padding:14 }) }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
             {[
-              ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],
-              ['Bauherr', begehung.kunde_name || '–'],
+              ['Hauptauftraggeber', HAUPT_AG.firma],
+              ['Zu prüfende Firma', begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'],
               ['Sachverständiger', begehung.sachverstaendiger],
               ['Adresse', begehung.adresse],
             ].map(([k,v]) => (
@@ -1825,11 +1837,11 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
                 <p style={{ fontSize:11, fontWeight:700, color:G.muted, textTransform:'uppercase', letterSpacing:'.5px', margin:'4px 0 2px' }}>Protokoll versenden</p>
                 <button onClick={() => setShowPreview('ag_beide')}
                   style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
-                  👁 Vorschau & Beide Protokolle an AG
+                  👁 Vorschau & Beide Protokolle an zu prüfende Firma
                 </button>
-                <button onClick={() => setShowPreview('bauherr')}
+                <button onClick={() => setShowPreview('haupt_ag')}
                   style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
-                  👁 Vorschau & Öffentliches an Bauherr
+                  👁 Vorschau & Internes an Hauptauftraggeber
                 </button>
                 {begehung.status === 'versendet' && (
                   <button style={{ background:G.green, color:'#fff', border:'none', borderRadius:10, padding:'12px 16px', fontSize:13, fontWeight:700, cursor:'pointer', width:'100%', marginTop:4 }} onClick={finalize}>
@@ -1873,8 +1885,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                 {[
-                  ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],
-                  ['Bauherr', begehung.kunde_name || '–'],
+                  ['Hauptauftraggeber', HAUPT_AG.firma],
+                  ['Zu prüfende Firma', begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'],
                   ['Sachverständiger', begehung.sachverstaendiger],
                   ['Adresse', begehung.adresse],
                 ].map(([k,v]) => (
@@ -1928,11 +1940,7 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
             <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:8 }}>
               <button onClick={() => setShowPreview('ag_oeffentlich')}
                 style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
-                👁 Vorschau & An Auftraggeber senden
-              </button>
-              <button onClick={() => setShowPreview('bauherr')}
-                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
-                👁 Vorschau & An Bauherr senden
+                👁 Vorschau & An zu prüfende Firma senden
               </button>
             </div>
           </div>
@@ -2074,8 +2082,8 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                 {[
-                  ['Auftraggeber', begehung.auftraggeber_firma || begehung.auftraggeber_name],
-                  ['Bauherr', begehung.kunde_name || '–'],
+                  ['Hauptauftraggeber', HAUPT_AG.firma],
+                  ['Zu prüfende Firma', begehung.sub_ag_firma || begehung.auftraggeber_firma || '–'],
                   ['Sachverständiger', begehung.sachverstaendiger],
                   ['Adresse', begehung.adresse],
                 ].map(([k,v]) => (
@@ -2133,10 +2141,14 @@ function BegehungDetail({ begehung: initial, setPage, user }) {
             })}
 
             {/* Versand Button */}
-            <div style={{ marginTop:16 }}>
+            <div style={{ marginTop:16, display:'flex', flexDirection:'column', gap:8 }}>
               <button onClick={() => setShowPreview('ag_beide')}
                 style={{ background:G.accent, color:'#fff', border:'none', borderRadius:10, padding:'13px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:700, cursor:'pointer', width:'100%' }}>
-                👁 Vorschau & Beide Protokolle an AG senden
+                👁 Vorschau & Beide Protokolle an zu prüfende Firma
+              </button>
+              <button onClick={() => setShowPreview('haupt_ag')}
+                style={{ background:'#f9fafb', border:`0.5px solid ${G.border}`, borderRadius:10, padding:'12px', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:13, fontWeight:600, color:G.text, cursor:'pointer', width:'100%' }}>
+                👁 Vorschau & Internes an Hauptauftraggeber
               </button>
             </div>
           </div>
@@ -2861,7 +2873,7 @@ function AdminPanel() {
   useEffect(() => {
     async function load() {
       const [bRes, pRes, cRes, uRes] = await Promise.all([
-        sb.from('begehungen').select('id, titel, user_id, datum, status, auftraggeber_firma, auftraggeber_name').order('datum', { ascending:false }),
+        sb.from('begehungen').select('id, titel, user_id, datum, status, sub_ag_firma, auftraggeber_firma').order('datum', { ascending:false }),
         sb.from('profiles').select('id, full_name, firma, uid_nummer, firma_adresse, telefon, email:id'),
         sb.from('companies').select('*, company_subscriptions(plan_id, status)').order('created_at', { ascending:false }),
         sb.from('usage_events').select('company_id, event_type, created_at').order('created_at', { ascending:false }),
