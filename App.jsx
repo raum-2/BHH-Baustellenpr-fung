@@ -352,10 +352,10 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
 
     // Text (überläuft bei Bedarf auf Folgeseite)
     if (text) {
-      const textLines = doc.splitTextToSize(text, cW)
       doc.setFontSize(9.5)
       doc.setFont('helvetica', 'normal')
       doc.setTextColor(...dark)
+      const textLines = doc.splitTextToSize(text, cW)
       for (const line of textLines) {
         checkY(5)
         doc.text(line, ml, y)
@@ -365,10 +365,10 @@ async function generateProtokollPDF({ type, begehung, punkte, getEditedText, ste
 
     // Rohnotiz (intern only)
     if (!isOeff && p.rohtext) {
-      const rohLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
       doc.setFontSize(8)
       doc.setFont('helvetica', 'italic')
       doc.setTextColor(...muted)
+      const rohLines = doc.splitTextToSize('Rohnotiz: ' + p.rohtext, cW)
       for (const line of rohLines) {
         checkY(4.5)
         doc.text(line, ml, y)
